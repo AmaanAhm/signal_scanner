@@ -243,50 +243,61 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
     const intradayBars = new Map<string, Array<{ date: string; time: string; close: number }>>();
 
     const symbols = [...symbolSet];
-    const BATCH = 5;
+    const BATCH = 15; // larger batches for speed
 
-    // Fetch daily bars (full range)
-    for (let i = 0; i < symbols.length; i += BATCH) {
-      const batch = symbols.slice(i, i + BATCH);
-      await Promise.allSettled(
-        batch.map(async (sym) => {
-          try {
-            const r = await yf.chart(sym, {
-              period1: new Date(period1.getTime() - 10 * 86400_000),
-              interval: "1d",
-            }, { validateResult: false }) as any;
-            const bars: Array<{ date: string; close: number }> = [];
-            for (const q of r.quotes) {
-              if (q.close == null) continue;
-              const d = q.date instanceof Date ? q.date : new Date(q.date as string);
-              const { date } = formatIST(d.getTime());
-              bars.push({ date, close: q.close });
-            }
-            dailyBars.set(sym, bars);
-          } catch { /* skip */ }
-        }),
-      );
+    // Determine which symbols need 5m data (have exits in last ~55 days)
+    const recentCutoff = new Date(Date.now() - 50 * 86400_000).toISOString().slice(0, 10);
+    const symbolsNeed5m = new Set<string>();
+    for (const e of filtered) {
+      if (e.retestDate >= recentCutoff) symbolsNeed5m.add(e.symbol);
     }
 
-    // Fetch 5m intraday bars (last ~55 days for 2:55 PM exit)
+    // Fetch daily + 5m in parallel per symbol batch
     for (let i = 0; i < symbols.length; i += BATCH) {
       const batch = symbols.slice(i, i + BATCH);
       await Promise.allSettled(
-        batch.map(async (sym) => {
-          try {
-            const r = await yf.chart(sym, {
-              period1: new Date(Date.now() - 55 * 86400_000),
-              interval: "5m",
-            }, { validateResult: false }) as any;
-            const bars: Array<{ date: string; time: string; close: number }> = [];
-            for (const q of r.quotes) {
-              if (q.close == null) continue;
-              const d = q.date instanceof Date ? q.date : new Date(q.date as string);
-              const { date, time } = formatIST(d.getTime());
-              bars.push({ date, time, close: q.close });
-            }
-            intradayBars.set(sym, bars);
-          } catch { /* skip */ }
+        batch.flatMap((sym) => {
+          const jobs: Promise<void>[] = [];
+
+          // Daily bars (always needed)
+          jobs.push((async () => {
+            try {
+              const r = await yf.chart(sym, {
+                period1: new Date(period1.getTime() - 10 * 86400_000),
+                interval: "1d",
+              }, { validateResult: false }) as any;
+              const bars: Array<{ date: string; close: number }> = [];
+              for (const q of r.quotes) {
+                if (q.close == null) continue;
+                const d = q.date instanceof Date ? q.date : new Date(q.date as string);
+                const { date } = formatIST(d.getTime());
+                bars.push({ date, close: q.close });
+              }
+              dailyBars.set(sym, bars);
+            } catch { /* skip */ }
+          })());
+
+          // 5m bars (only if symbol has recent exits)
+          if (symbolsNeed5m.has(sym)) {
+            jobs.push((async () => {
+              try {
+                const r = await yf.chart(sym, {
+                  period1: new Date(Date.now() - 55 * 86400_000),
+                  interval: "5m",
+                }, { validateResult: false }) as any;
+                const bars: Array<{ date: string; time: string; close: number }> = [];
+                for (const q of r.quotes) {
+                  if (q.close == null) continue;
+                  const d = q.date instanceof Date ? q.date : new Date(q.date as string);
+                  const { date, time } = formatIST(d.getTime());
+                  bars.push({ date, time, close: q.close });
+                }
+                intradayBars.set(sym, bars);
+              } catch { /* skip */ }
+            })());
+          }
+
+          return jobs;
         }),
       );
     }
