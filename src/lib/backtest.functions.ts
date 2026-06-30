@@ -82,17 +82,29 @@ function formatIST(epochMs: number): { date: string; time: string } {
   return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}:${get("second")}` };
 }
 
-// ── Per-stock backtest: runs Lorentzian, finds all BUY signals + retests ──
-
 export const backtestStock = createServerFn({ method: "POST" })
   .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "15m" | "30m" | "60m" | "1d" }) => input)
   .handler(async ({ data }): Promise<{ entries: BacktestEntry[]; error?: string }> => {
     try {
       const { period1 } = dateRangeToDays(data.dateRange);
       const tf = data.timeframe || "1d";
-      // For intraday Yahoo limits history, fetch as much as possible
-      const warmupDays = tf === "1d" ? 400 : 60;
-      const fetchStart = new Date(period1.getTime() - warmupDays * 86400_000);
+
+      // Yahoo data limits per timeframe
+      const tfConfig: Record<string, { maxDays: number; barsPerDay: number }> = {
+        "15m": { maxDays: 55, barsPerDay: 26 },   // 6.5h / 15m = 26
+        "30m": { maxDays: 55, barsPerDay: 13 },    // 6.5h / 30m = 13
+        "60m": { maxDays: 700, barsPerDay: 7 },    // 6.5h / 60m ≈ 7
+        "1d":  { maxDays: 5 * 365, barsPerDay: 1 },
+      };
+      const { maxDays, barsPerDay } = tfConfig[tf] || tfConfig["1d"];
+
+      // For Lorentzian warmup we need ~300 bars before the date range
+      const warmupBars = 350;
+      const warmupDays = Math.ceil(warmupBars / barsPerDay) + 30; // extra buffer
+      const fetchStart = new Date(Math.max(
+        period1.getTime() - warmupDays * 86400_000,
+        Date.now() - maxDays * 86400_000, // Yahoo limit
+      ));
 
       const result = await yf.chart(data.symbol, {
         period1: fetchStart,
@@ -115,6 +127,9 @@ export const backtestStock = createServerFn({ method: "POST" })
       const rangeStart = period1.getTime();
       const entries: BacktestEntry[] = [];
 
+      // Retest window: ~5 trading days worth of bars (for intraday that's many bars)
+      const retestWindow = Math.max(20, barsPerDay * 5);
+
       // Find all BUY signals within the date range
       for (let si = 0; si < lorentzResult.signals.length; si++) {
         const sig = lorentzResult.signals[si];
@@ -125,9 +140,8 @@ export const backtestStock = createServerFn({ method: "POST" })
         const retestLevel = signalBar.high; // BUY → retest at signal candle's HIGH
         const { date: sigDate, time: sigTime } = formatIST(signalBar.time);
 
-        // Look forward for retests: daily low <= retestLevel <= daily high
-        // Skip the signal bar itself
-        for (let j = sig.index + 1; j < bars.length; j++) {
+        // Look forward for retests within the window
+        for (let j = sig.index + 1; j < bars.length && j <= sig.index + retestWindow; j++) {
           const bar = bars[j];
           const touching = bar.low <= retestLevel && bar.high >= retestLevel;
           if (touching) {
@@ -144,8 +158,6 @@ export const backtestStock = createServerFn({ method: "POST" })
             });
             break; // Only first retest per signal
           }
-          // Stop looking after 20 trading days with no retest
-          if (j - sig.index > 20) break;
         }
       }
 
