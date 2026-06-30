@@ -946,7 +946,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const handleRun = useCallback(async () => {
     setRunning(true);
     setResult(null);
-    const list = FULL_UNIVERSE;
+    const list = FULL_UNIVERSE.filter((s) => !s.symbol.startsWith("^") && !s.symbol.endsWith("-USD"));
     setProgress({ done: 0, total: list.length, phase: "Scanning stocks…" });
 
     const allEntries: any[] = [];
