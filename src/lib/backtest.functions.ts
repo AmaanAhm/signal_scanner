@@ -15,20 +15,17 @@ interface BacktestEntry {
   direction: "BUY" | "SELL";
   signalDate: string;
   signalTime: string;
-  signalPrice: number;   // close of signal candle
+  signalPrice: number;
   retestDate: string;
   retestTime: string;
-  retestPrice: number;   // same as signalPrice
-  dailyExits: Array<{ holdDays: number; exitDate: string; exitPrice: number }>;
-}
-
-interface ExitInfo {
-  holdDays: number;
-  exitDate: string;
+  retestPrice: number;
+  exitType: "TARGET" | "EOD";
   exitPrice: number;
+  exitTime: string;
   pnl: number;
   pnlPct: number;
   win: boolean;
+  holdingMinutes: number;
 }
 
 export interface BacktestTrade {
@@ -38,27 +35,34 @@ export interface BacktestTrade {
   entryDate: string;
   entryTime: string;
   entryPrice: number;
-  exits: ExitInfo[];
+  exitType: "TARGET" | "EOD";
+  exitPrice: number;
+  exitTime: string;
+  pnl: number;
+  pnlPct: number;
+  win: boolean;
+  holdingMinutes: number;
 }
 
-export interface HoldPeriodSummary {
-  holdDays: number;
+export interface BacktestSummary {
   totalTrades: number;
   wins: number;
   losses: number;
   winRate: number;
-  avgReturn: number;
   totalReturn: number;
+  avgReturn: number;
+  maxDrawdown: number;
+  profitFactor: number;
+  avgHoldingMinutes: number;
+  targetExits: number;
+  eodExits: number;
   maxGain: number;
   maxLoss: number;
-  avgHoldingReturn: number;
-  profitFactor: number;
-  maxDrawdown: number;
 }
 
 export interface BacktestResult {
   trades: BacktestTrade[];
-  summaries: HoldPeriodSummary[];
+  summary: BacktestSummary;
   totalStocksProcessed: number;
   totalStocksWithSignals: number;
   dateRangeUsed: { start: string; end: string };
@@ -87,10 +91,15 @@ function formatIST(epochMs: number): { date: string; time: string } {
   return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}:${get("second")}` };
 }
 
+function istMinutesFromTime(time: string): number {
+  const h = parseInt(time.slice(0, 2), 10);
+  const m = parseInt(time.slice(3, 5), 10);
+  return h * 60 + m;
+}
+
 // ── Per-stock backtest ──
-// Step 1: Run Lorentzian → find Original BUY/SELL signals
-// Step 2: Walk bars chronologically, store latest signal, wait for retest (price touches signal close)
-// Step 3: On retest → create entry with pre-calculated daily exits
+// Signal → store → wait for retest → entry at signal close
+// Exit: +2% target OR 2:55 PM EOD same day
 
 export const backtestStock = createServerFn({ method: "POST" })
   .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "15m" | "30m" | "60m" | "1d" }) => input)
@@ -128,46 +137,23 @@ export const backtestStock = createServerFn({ method: "POST" })
 
       if (bars.length < 100) return { entries: [], error: "Not enough data" };
 
-      // Fetch daily bars for exit price calculation
-      let dailyBars: Array<{ date: string; close: number }> = [];
-      if (tf !== "1d") {
-        try {
-          const dr = await yf.chart(data.symbol, {
-            period1: new Date(period1.getTime() - 10 * 86400_000),
-            interval: "1d",
-          }, { validateResult: false }) as any;
-          for (const q of dr.quotes) {
-            if (q.close == null) continue;
-            const d = q.date instanceof Date ? q.date : new Date(q.date as string);
-            const { date } = formatIST(d.getTime());
-            dailyBars.push({ date, close: q.close });
-          }
-        } catch { /* skip */ }
-      } else {
-        for (const b of bars) {
-          const { date } = formatIST(b.time);
-          dailyBars.push({ date, close: b.close });
-        }
-      }
-
       // Run Lorentzian classification
       const lorentzResult = runLorentzian(bars);
 
-      // Build signal index: bar index → signal info
+      // Build signal index
       const signalAt = new Map<number, { dir: "BUY" | "SELL"; price: number }>();
       for (const sig of lorentzResult.signals) {
         if (sig.source !== "Original" || !sig.signal) continue;
         signalAt.set(sig.index, {
           dir: sig.signal as "BUY" | "SELL",
-          price: bars[sig.index].close, // Entry at signal candle's CLOSE
+          price: bars[sig.index].close,
         });
       }
 
       const rangeStart = period1.getTime();
       const entries: BacktestEntry[] = [];
 
-      // Walk through bars chronologically
-      // Track pending signal — newest replaces old
+      // Pending signal tracker
       let pending: {
         dir: "BUY" | "SELL";
         price: number;
@@ -179,28 +165,109 @@ export const backtestStock = createServerFn({ method: "POST" })
       for (let i = 0; i < bars.length; i++) {
         const bar = bars[i];
 
-        // Check retest of pending signal BEFORE checking for new signal
+        // Check retest of pending signal
         if (pending && i > pending.barIndex && bar.time >= rangeStart) {
           const touching = bar.low <= pending.price && bar.high >= pending.price;
           if (touching) {
             const { date: rtDate, time: rtTime } = formatIST(bar.time);
-            // For daily bars, we can't know exact intraday time — show "Intraday"
             const displayTime = tf === "1d" ? "Intraday" : rtTime;
+            const entryPrice = pending.price;
+            const TARGET_PCT = 0.02; // 2%
 
-            // Pre-calculate exits from daily bars
-            const dailyExits: Array<{ holdDays: number; exitDate: string; exitPrice: number }> = [];
-            const entryDayIdx = dailyBars.findIndex((b) => b.date >= rtDate);
-            if (entryDayIdx >= 0) {
-              for (let hold = 1; hold <= 5; hold++) {
-                const exitIdx = entryDayIdx + hold;
-                if (exitIdx >= dailyBars.length) break;
-                dailyExits.push({
-                  holdDays: hold,
-                  exitDate: dailyBars[exitIdx].date,
-                  exitPrice: dailyBars[exitIdx].close,
-                });
+            // ── Calculate exit ──
+            let exitType: "TARGET" | "EOD" = "EOD";
+            let exitPrice = bar.close; // default: EOD close
+            let exitTime = displayTime;
+            let holdingMinutes = 0;
+
+            if (tf === "1d") {
+              // Daily bar: check if target was hit within the bar's range
+              if (pending.dir === "BUY" && bar.high >= entryPrice * (1 + TARGET_PCT)) {
+                exitType = "TARGET";
+                exitPrice = Math.round(entryPrice * (1 + TARGET_PCT) * 100) / 100;
+                exitTime = "Intraday";
+              } else if (pending.dir === "SELL" && bar.low <= entryPrice * (1 - TARGET_PCT)) {
+                exitType = "TARGET";
+                exitPrice = Math.round(entryPrice * (1 - TARGET_PCT) * 100) / 100;
+                exitTime = "Intraday";
+              } else {
+                exitPrice = bar.close;
+                exitTime = "15:30";
+              }
+              // Estimate holding: if target hit, ~half day; if EOD, full day
+              holdingMinutes = exitType === "TARGET" ? 180 : 375;
+            } else {
+              // Intraday TF: walk forward through same-day bars
+              const entryMinutes = istMinutesFromTime(rtTime);
+              const rtDateStr = rtDate;
+              let found = false;
+
+              // Check the retest bar itself first
+              if (pending.dir === "BUY" && bar.high >= entryPrice * (1 + TARGET_PCT)) {
+                exitType = "TARGET";
+                exitPrice = Math.round(entryPrice * (1 + TARGET_PCT) * 100) / 100;
+                exitTime = rtTime;
+                holdingMinutes = 0;
+                found = true;
+              } else if (pending.dir === "SELL" && bar.low <= entryPrice * (1 - TARGET_PCT)) {
+                exitType = "TARGET";
+                exitPrice = Math.round(entryPrice * (1 - TARGET_PCT) * 100) / 100;
+                exitTime = rtTime;
+                holdingMinutes = 0;
+                found = true;
+              }
+
+              if (!found) {
+                // Walk forward through subsequent bars on the same date
+                let lastBarOfDay = bar;
+                let lastBarTime = rtTime;
+
+                for (let k = i + 1; k < bars.length; k++) {
+                  const fBar = bars[k];
+                  const { date: fDate, time: fTime } = formatIST(fBar.time);
+                  if (fDate !== rtDateStr) break; // Different day → stop
+
+                  const fMinutes = istMinutesFromTime(fTime);
+
+                  // Check target
+                  if (!found) {
+                    if (pending.dir === "BUY" && fBar.high >= entryPrice * (1 + TARGET_PCT)) {
+                      exitType = "TARGET";
+                      exitPrice = Math.round(entryPrice * (1 + TARGET_PCT) * 100) / 100;
+                      exitTime = fTime;
+                      holdingMinutes = fMinutes - entryMinutes;
+                      found = true;
+                      break;
+                    } else if (pending.dir === "SELL" && fBar.low <= entryPrice * (1 - TARGET_PCT)) {
+                      exitType = "TARGET";
+                      exitPrice = Math.round(entryPrice * (1 - TARGET_PCT) * 100) / 100;
+                      exitTime = fTime;
+                      holdingMinutes = fMinutes - entryMinutes;
+                      found = true;
+                      break;
+                    }
+                  }
+
+                  lastBarOfDay = fBar;
+                  lastBarTime = fTime;
+                }
+
+                if (!found) {
+                  // EOD exit at last bar of the day (closest to 2:55 PM / 14:55)
+                  exitType = "EOD";
+                  exitPrice = lastBarOfDay.close;
+                  exitTime = lastBarTime;
+                  holdingMinutes = istMinutesFromTime(lastBarTime) - entryMinutes;
+                  if (holdingMinutes < 0) holdingMinutes = 0;
+                }
               }
             }
+
+            // Calculate P&L
+            const pnl = pending.dir === "BUY"
+              ? exitPrice - entryPrice
+              : entryPrice - exitPrice;
+            const pnlPct = (pnl / entryPrice) * 100;
 
             entries.push({
               symbol: data.symbol,
@@ -211,26 +278,29 @@ export const backtestStock = createServerFn({ method: "POST" })
               signalPrice: pending.price,
               retestDate: rtDate,
               retestTime: displayTime,
-              retestPrice: pending.price,
-              dailyExits,
+              retestPrice: entryPrice,
+              exitType,
+              exitPrice: Math.round(exitPrice * 100) / 100,
+              exitTime,
+              pnl: Math.round(pnl * 100) / 100,
+              pnlPct: Math.round(pnlPct * 100) / 100,
+              win: pnl > 0,
+              holdingMinutes: Math.max(0, holdingMinutes),
             });
 
-            pending = null; // Signal consumed — delete it
+            pending = null;
           }
         }
 
-        // Check for new Original signal on this bar → replace any pending
-        // Only consider signals after 12:00 PM IST (for intraday TFs)
+        // Check for new signal → replace pending
+        // Only consider signals after 12 PM IST (intraday TFs)
         const newSig = signalAt.get(i);
         if (newSig) {
           const { date, time } = formatIST(bar.time);
-
-          // Filter: skip signals before 12 PM IST (for intraday TFs with real timestamps)
           if (tf !== "1d") {
             const hour = parseInt(time.slice(0, 2), 10);
-            if (hour < 12) continue; // Skip pre-noon signals
+            if (hour < 12) continue;
           }
-
           pending = {
             dir: newSig.dir,
             price: newSig.price,
@@ -247,8 +317,8 @@ export const backtestStock = createServerFn({ method: "POST" })
     }
   });
 
-// ── Aggregate: sort, no-overlap, build trades + summaries ──
-// No API calls — all exit prices are pre-calculated in Phase 1
+// ── Aggregate: no-overlap, compile trades, compute summary ──
+// Zero API calls — all exits pre-calculated
 
 export const aggregateBacktest = createServerFn({ method: "POST" })
   .validator((input: { allEntries: BacktestEntry[]; dateRange: DateRange; totalScanned?: number }) => input)
@@ -256,48 +326,26 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
     const { allEntries, dateRange, totalScanned } = data;
     const { period1, period2 } = dateRangeToDays(dateRange);
 
-    // 1. Sort chronologically by retest date+time
+    // 1. Sort chronologically
     allEntries.sort((a, b) => `${a.retestDate} ${a.retestTime}`.localeCompare(`${b.retestDate} ${b.retestTime}`));
 
-    // 2. No-overlap rule per symbol: skip if same stock has an open trade
+    // 2. No-overlap per symbol
     const openUntil = new Map<string, string>();
     const filtered: BacktestEntry[] = [];
     for (const e of allEntries) {
       const lastExit = openUntil.get(e.symbol);
       if (lastExit && e.retestDate <= lastExit) continue;
-      if (!e.dailyExits || e.dailyExits.length === 0) continue;
       filtered.push(e);
-      // Reserve exit window (max 5 trading days ≈ 9 calendar days)
-      const exitEst = new Date(new Date(e.retestDate).getTime() + 9 * 86400_000).toISOString().slice(0, 10);
-      openUntil.set(e.symbol, exitEst);
+      // Same-day exit, so only block the entry date
+      openUntil.set(e.symbol, e.retestDate);
     }
 
-    // 3. Build trades with direction-aware P&L
+    // 3. Build trades
     const trades: BacktestTrade[] = [];
     const symbolSet = new Set<string>();
 
     for (const e of filtered) {
       symbolSet.add(e.symbol);
-
-      const exits: ExitInfo[] = [];
-      for (const de of e.dailyExits) {
-        // BUY: profit when price goes up.  SELL: profit when price goes down.
-        const pnl = e.direction === "BUY"
-          ? de.exitPrice - e.retestPrice
-          : e.retestPrice - de.exitPrice;
-        const pnlPct = (pnl / e.retestPrice) * 100;
-        exits.push({
-          holdDays: de.holdDays,
-          exitDate: de.exitDate,
-          exitPrice: Math.round(de.exitPrice * 100) / 100,
-          pnl: Math.round(pnl * 100) / 100,
-          pnlPct: Math.round(pnlPct * 100) / 100,
-          win: pnl > 0,
-        });
-      }
-
-      if (exits.length === 0) continue;
-
       trades.push({
         symbol: e.symbol,
         name: e.name,
@@ -305,59 +353,62 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
         entryDate: e.retestDate,
         entryTime: e.retestTime,
         entryPrice: e.retestPrice,
-        exits,
+        exitType: e.exitType,
+        exitPrice: e.exitPrice,
+        exitTime: e.exitTime,
+        pnl: e.pnl,
+        pnlPct: e.pnlPct,
+        win: e.win,
+        holdingMinutes: e.holdingMinutes,
       });
     }
 
-    // 4. Build summaries per holding period
-    const summaries: HoldPeriodSummary[] = [];
-    for (let hold = 1; hold <= 5; hold++) {
-      const relevant = trades
-        .map((t) => t.exits.find((e) => e.holdDays === hold))
-        .filter((e): e is ExitInfo => e != null);
+    // 4. Compute summary
+    const wins = trades.filter((t) => t.win).length;
+    const losses = trades.length - wins;
+    const returns = trades.map((t) => t.pnlPct);
+    const totalRet = returns.reduce((a, b) => a + b, 0);
 
-      const wins = relevant.filter((e) => e.win).length;
-      const losses = relevant.length - wins;
-      const returns = relevant.map((e) => e.pnlPct);
-      const totalRet = returns.reduce((a, b) => a + b, 0);
+    const sumWins = returns.filter((r) => r > 0).reduce((a, b) => a + b, 0);
+    const sumLosses = Math.abs(returns.filter((r) => r < 0).reduce((a, b) => a + b, 0));
+    const profitFactor = sumLosses > 0 ? Math.round((sumWins / sumLosses) * 100) / 100 : sumWins > 0 ? Infinity : 0;
 
-      // Profit factor = sum of winning returns / |sum of losing returns|
-      const sumWins = returns.filter((r) => r > 0).reduce((a, b) => a + b, 0);
-      const sumLosses = Math.abs(returns.filter((r) => r < 0).reduce((a, b) => a + b, 0));
-      const profitFactor = sumLosses > 0 ? Math.round((sumWins / sumLosses) * 100) / 100 : sumWins > 0 ? Infinity : 0;
-
-      // Max drawdown: worst peak-to-trough in cumulative returns
-      let maxDrawdown = 0;
-      let peak = 0;
-      let cumulative = 0;
-      for (const r of returns) {
-        cumulative += r;
-        if (cumulative > peak) peak = cumulative;
-        const dd = peak - cumulative;
-        if (dd > maxDrawdown) maxDrawdown = dd;
-      }
-
-      summaries.push({
-        holdDays: hold,
-        totalTrades: relevant.length,
-        wins,
-        losses,
-        winRate: relevant.length > 0 ? Math.round((wins / relevant.length) * 10000) / 100 : 0,
-        avgReturn: returns.length > 0 ? Math.round((totalRet / returns.length) * 100) / 100 : 0,
-        totalReturn: Math.round(totalRet * 100) / 100,
-        maxGain: returns.length > 0 ? Math.round(Math.max(...returns) * 100) / 100 : 0,
-        maxLoss: returns.length > 0 ? Math.round(Math.min(...returns) * 100) / 100 : 0,
-        avgHoldingReturn: returns.length > 0 ? Math.round((totalRet / returns.length) * 100) / 100 : 0,
-        profitFactor,
-        maxDrawdown: Math.round(maxDrawdown * 100) / 100,
-      });
+    // Max drawdown
+    let maxDrawdown = 0;
+    let peak = 0;
+    let cumulative = 0;
+    for (const r of returns) {
+      cumulative += r;
+      if (cumulative > peak) peak = cumulative;
+      const dd = peak - cumulative;
+      if (dd > maxDrawdown) maxDrawdown = dd;
     }
+
+    const targetExits = trades.filter((t) => t.exitType === "TARGET").length;
+    const eodExits = trades.filter((t) => t.exitType === "EOD").length;
+    const totalHolding = trades.reduce((a, t) => a + t.holdingMinutes, 0);
+
+    const summary: BacktestSummary = {
+      totalTrades: trades.length,
+      wins,
+      losses,
+      winRate: trades.length > 0 ? Math.round((wins / trades.length) * 10000) / 100 : 0,
+      totalReturn: Math.round(totalRet * 100) / 100,
+      avgReturn: returns.length > 0 ? Math.round((totalRet / returns.length) * 100) / 100 : 0,
+      maxDrawdown: Math.round(maxDrawdown * 100) / 100,
+      profitFactor,
+      avgHoldingMinutes: trades.length > 0 ? Math.round(totalHolding / trades.length) : 0,
+      targetExits,
+      eodExits,
+      maxGain: returns.length > 0 ? Math.round(Math.max(...returns) * 100) / 100 : 0,
+      maxLoss: returns.length > 0 ? Math.round(Math.min(...returns) * 100) / 100 : 0,
+    };
 
     return {
       trades,
-      summaries,
+      summary,
       totalStocksProcessed: totalScanned ?? symbolSet.size,
-      totalStocksWithSignals: new Set(trades.map((t) => t.symbol)).size,
+      totalStocksWithSignals: symbolSet.size,
       dateRangeUsed: { start: period1.toISOString().slice(0, 10), end: period2.toISOString().slice(0, 10) },
     };
   });
