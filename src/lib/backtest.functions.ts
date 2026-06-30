@@ -184,6 +184,8 @@ export const backtestStock = createServerFn({ method: "POST" })
           const touching = bar.low <= pending.price && bar.high >= pending.price;
           if (touching) {
             const { date: rtDate, time: rtTime } = formatIST(bar.time);
+            // For daily bars, we can't know exact intraday time — show "Intraday"
+            const displayTime = tf === "1d" ? "Intraday" : rtTime;
 
             // Pre-calculate exits from daily bars
             const dailyExits: Array<{ holdDays: number; exitDate: string; exitPrice: number }> = [];
@@ -205,10 +207,10 @@ export const backtestStock = createServerFn({ method: "POST" })
               name: data.name,
               direction: pending.dir,
               signalDate: pending.date,
-              signalTime: pending.time,
+              signalTime: tf === "1d" ? "Intraday" : pending.time,
               signalPrice: pending.price,
               retestDate: rtDate,
-              retestTime: rtTime,
+              retestTime: displayTime,
               retestPrice: pending.price,
               dailyExits,
             });
