@@ -121,10 +121,14 @@ function Index() {
   const runningRef = useRef(false);
   const retestRefreshRef = useRef(false);
   const paperRef = useRef<PaperTradeRef>(null);
+  const [loadingTf, setLoadingTf] = useState(false);
 
   // Load persisted scan results on mount / timeframe change.
   useEffect(() => {
     let cancelled = false;
+    setLoadingTf(true);
+    setRows([]);
+    setLastUpdated(null);
     dbLoadScanRef.current({ data: { timeframe: tf } })
       .then((data: any) => {
         if (cancelled) return;
@@ -133,7 +137,8 @@ function Index() {
           if (data.updatedAt) setLastUpdated(new Date(data.updatedAt));
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingTf(false); });
     return () => { cancelled = true; };
   }, [tf]);
 
@@ -152,7 +157,7 @@ function Index() {
         const item = queue.shift();
         if (!item) break;
         try {
-          const r = (await scan({ data: { symbol: item.symbol, name: item.name, timeframe: tf } })) as ScanRow;
+          const r = (await scan({ data: { symbol: item.symbol, name: item.name, timeframe: tf as "15m" | "30m" | "60m" | "1d" } })) as ScanRow;
           if (r.original || (r.retests && r.retests.length > 0)) collected.push(r);
         } catch { /* ignore */ }
         finally {
@@ -400,9 +405,18 @@ function Index() {
 
         {/* ── Tab Panels ── */}
         <div className="glass-card p-5">
-          {activeTab === "original" && <SignalTable title="Original BUY / SELL Signals" subtitle="Signal candle generated directly by the Lorentzian classifier." rows={originals} />}
-          {activeTab === "top10" && <Top10Panel retestBuys={retestBuys} retestSells={retestSells} />}
-          {activeTab === "retests" && <SignalTable title="All Retest Entries" subtitle="Every bar where price touched the exact Buy/Sell signal price." rows={retests} onAddTrade={paperRef.current?.addTrade} activeSymbols={activeSymbols} />}
+          {loadingTf ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div style={{ width: 32, height: 32, border: "3px solid oklch(0.90 0.01 255)", borderTopColor: "oklch(0.55 0.17 200)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              <span className="text-sm" style={{ color: "oklch(0.50 0.03 255)" }}>Loading {tf} data…</span>
+            </div>
+          ) : (
+            <>
+              {activeTab === "original" && <SignalTable title="Original BUY / SELL Signals" subtitle="Signal candle generated directly by the Lorentzian classifier." rows={originals} />}
+              {activeTab === "top10" && <Top10Panel retestBuys={retestBuys} retestSells={retestSells} />}
+              {activeTab === "retests" && <SignalTable title="All Retest Entries" subtitle="Every bar where price touched the exact Buy/Sell signal price." rows={retests} onAddTrade={paperRef.current?.addTrade} activeSymbols={activeSymbols} />}
+            </>
+          )}
           <div style={{ display: activeTab === "paper" ? "block" : "none" }}><PaperTradePanel ref={paperRef} onActiveChange={setActiveSymbols} /></div>
         </div>
 
