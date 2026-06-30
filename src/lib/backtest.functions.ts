@@ -18,6 +18,8 @@ interface BacktestEntry {
   retestDate: string;
   retestTime: string;
   retestPrice: number;
+  // Pre-calculated exits from daily close (filled in Phase 1)
+  dailyExits: Array<{ holdDays: number; exitDate: string; exitPrice: number }>;
 }
 
 interface ExitInfo {
@@ -91,19 +93,18 @@ export const backtestStock = createServerFn({ method: "POST" })
 
       // Yahoo data limits per timeframe
       const tfConfig: Record<string, { maxDays: number; barsPerDay: number }> = {
-        "15m": { maxDays: 55, barsPerDay: 26 },   // 6.5h / 15m = 26
-        "30m": { maxDays: 55, barsPerDay: 13 },    // 6.5h / 30m = 13
-        "60m": { maxDays: 700, barsPerDay: 7 },    // 6.5h / 60m ≈ 7
+        "15m": { maxDays: 55, barsPerDay: 26 },
+        "30m": { maxDays: 55, barsPerDay: 13 },
+        "60m": { maxDays: 700, barsPerDay: 7 },
         "1d":  { maxDays: 5 * 365, barsPerDay: 1 },
       };
       const { maxDays, barsPerDay } = tfConfig[tf] || tfConfig["1d"];
 
-      // For Lorentzian warmup we need ~300 bars before the date range
       const warmupBars = 350;
-      const warmupDays = Math.ceil(warmupBars / barsPerDay) + 30; // extra buffer
+      const warmupDays = Math.ceil(warmupBars / barsPerDay) + 30;
       const fetchStart = new Date(Math.max(
         period1.getTime() - warmupDays * 86400_000,
-        Date.now() - maxDays * 86400_000, // Yahoo limit
+        Date.now() - maxDays * 86400_000,
       ));
 
       const result = await yf.chart(data.symbol, {
@@ -120,18 +121,35 @@ export const backtestStock = createServerFn({ method: "POST" })
 
       if (bars.length < 100) return { entries: [], error: "Not enough data" };
 
+      // Also fetch daily bars for exit price calculation (done here to avoid re-fetching in aggregate)
+      let dailyBars: Array<{ date: string; close: number }> = [];
+      if (tf !== "1d") {
+        try {
+          const dr = await yf.chart(data.symbol, {
+            period1: new Date(period1.getTime() - 10 * 86400_000),
+            interval: "1d",
+          }, { validateResult: false }) as any;
+          for (const q of dr.quotes) {
+            if (q.close == null) continue;
+            const d = q.date instanceof Date ? q.date : new Date(q.date as string);
+            const { date } = formatIST(d.getTime());
+            dailyBars.push({ date, close: q.close });
+          }
+        } catch { /* daily fetch failed, entries will have empty exits */ }
+      } else {
+        // For 1d timeframe, reuse the same bars
+        for (const b of bars) {
+          const { date } = formatIST(b.time);
+          dailyBars.push({ date, close: b.close });
+        }
+      }
+
       // Run Lorentzian classification
       const lorentzResult = runLorentzian(bars);
 
-      // Filter date range
       const rangeStart = period1.getTime();
       const entries: BacktestEntry[] = [];
-
-      // Retest window: ~5 trading days worth of bars (for intraday that's many bars)
       const retestWindow = Math.max(20, barsPerDay * 5);
-
-      // Find all BUY signals within the date range
-      // For intraday TFs, only consider signals after 12:00 PM IST
       const isIntraday = tf !== "1d";
 
       for (let si = 0; si < lorentzResult.signals.length; si++) {
@@ -142,20 +160,33 @@ export const backtestStock = createServerFn({ method: "POST" })
         const signalBar = bars[sig.index];
         const { date: sigDate, time: sigTime } = formatIST(signalBar.time);
 
-        // Intraday: skip signals before 12:00 PM IST
         if (isIntraday) {
           const hour = parseInt(sigTime.slice(0, 2), 10);
           if (hour < 12) continue;
         }
 
-        const retestLevel = signalBar.high; // BUY → retest at signal candle's HIGH
+        const retestLevel = signalBar.high;
 
-        // Look forward for retests within the window
         for (let j = sig.index + 1; j < bars.length && j <= sig.index + retestWindow; j++) {
           const bar = bars[j];
-          const touching = bar.low <= retestLevel && bar.high >= retestLevel;
-          if (touching) {
+          if (bar.low <= retestLevel && bar.high >= retestLevel) {
             const { date: rtDate, time: rtTime } = formatIST(bar.time);
+
+            // Pre-calculate exits from daily bars
+            const dailyExits: Array<{ holdDays: number; exitDate: string; exitPrice: number }> = [];
+            const entryDayIdx = dailyBars.findIndex((b) => b.date >= rtDate);
+            if (entryDayIdx >= 0) {
+              for (let hold = 1; hold <= 5; hold++) {
+                const exitIdx = entryDayIdx + hold;
+                if (exitIdx >= dailyBars.length) break;
+                dailyExits.push({
+                  holdDays: hold,
+                  exitDate: dailyBars[exitIdx].date,
+                  exitPrice: dailyBars[exitIdx].close,
+                });
+              }
+            }
+
             entries.push({
               symbol: data.symbol,
               name: data.name,
@@ -165,8 +196,9 @@ export const backtestStock = createServerFn({ method: "POST" })
               retestDate: rtDate,
               retestTime: rtTime,
               retestPrice: retestLevel,
+              dailyExits,
             });
-            break; // Only first retest per signal
+            break;
           }
         }
       }
@@ -211,10 +243,10 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
     const { allEntries, dateRange, totalScanned } = data;
     const { period1, period2 } = dateRangeToDays(dateRange);
 
-    // 1. Sort chronologically by retest date+time
+    // 1. Sort chronologically
     allEntries.sort((a, b) => `${a.retestDate} ${a.retestTime}`.localeCompare(`${b.retestDate} ${b.retestTime}`));
 
-    // 2. Group by retest date, take top 10 per date (earliest first)
+    // 2. Top 10 per date
     const byDate = new Map<string, BacktestEntry[]>();
     for (const e of allEntries) {
       const arr = byDate.get(e.retestDate) || [];
@@ -226,7 +258,7 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
       selected.push(...group.slice(0, 10));
     }
 
-    // 3. No-overlap rule: skip if same stock has an open trade (5-day max)
+    // 3. No-overlap rule
     const openUntil = new Map<string, string>();
     const filtered: BacktestEntry[] = [];
     for (const e of selected) {
@@ -237,106 +269,60 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
       openUntil.set(e.symbol, exitEst);
     }
 
-    // 4. Fetch daily bars AND 5m intraday bars for exit prices per symbol
-    const symbolSet = new Set(filtered.map((e) => e.symbol));
-    const dailyBars = new Map<string, Array<{ date: string; close: number }>>();
-    const intradayBars = new Map<string, Array<{ date: string; time: string; close: number }>>();
-
-    const symbols = [...symbolSet];
-    const BATCH = 15; // larger batches for speed
-
-    // Determine which symbols need 5m data (have exits in last ~55 days)
+    // 4. Optionally fetch 5m data for 2:55 PM exit (only recent symbols)
     const recentCutoff = new Date(Date.now() - 50 * 86400_000).toISOString().slice(0, 10);
     const symbolsNeed5m = new Set<string>();
     for (const e of filtered) {
       if (e.retestDate >= recentCutoff) symbolsNeed5m.add(e.symbol);
     }
 
-    // Fetch daily + 5m in parallel per symbol batch
-    for (let i = 0; i < symbols.length; i += BATCH) {
-      const batch = symbols.slice(i, i + BATCH);
+    const intradayBars = new Map<string, Array<{ date: string; time: string; close: number }>>();
+    const sym5m = [...symbolsNeed5m];
+    const BATCH = 15;
+    for (let i = 0; i < sym5m.length; i += BATCH) {
+      const batch = sym5m.slice(i, i + BATCH);
       await Promise.allSettled(
-        batch.flatMap((sym) => {
-          const jobs: Promise<void>[] = [];
-
-          // Daily bars (always needed)
-          jobs.push((async () => {
-            try {
-              const r = await yf.chart(sym, {
-                period1: new Date(period1.getTime() - 10 * 86400_000),
-                interval: "1d",
-              }, { validateResult: false }) as any;
-              const bars: Array<{ date: string; close: number }> = [];
-              for (const q of r.quotes) {
-                if (q.close == null) continue;
-                const d = q.date instanceof Date ? q.date : new Date(q.date as string);
-                const { date } = formatIST(d.getTime());
-                bars.push({ date, close: q.close });
-              }
-              dailyBars.set(sym, bars);
-            } catch { /* skip */ }
-          })());
-
-          // 5m bars (only if symbol has recent exits)
-          if (symbolsNeed5m.has(sym)) {
-            jobs.push((async () => {
-              try {
-                const r = await yf.chart(sym, {
-                  period1: new Date(Date.now() - 55 * 86400_000),
-                  interval: "5m",
-                }, { validateResult: false }) as any;
-                const bars: Array<{ date: string; time: string; close: number }> = [];
-                for (const q of r.quotes) {
-                  if (q.close == null) continue;
-                  const d = q.date instanceof Date ? q.date : new Date(q.date as string);
-                  const { date, time } = formatIST(d.getTime());
-                  bars.push({ date, time, close: q.close });
-                }
-                intradayBars.set(sym, bars);
-              } catch { /* skip */ }
-            })());
-          }
-
-          return jobs;
+        batch.map(async (sym) => {
+          try {
+            const r = await yf.chart(sym, {
+              period1: new Date(Date.now() - 55 * 86400_000),
+              interval: "5m",
+            }, { validateResult: false }) as any;
+            const bars: Array<{ date: string; time: string; close: number }> = [];
+            for (const q of r.quotes) {
+              if (q.close == null) continue;
+              const d = q.date instanceof Date ? q.date : new Date(q.date as string);
+              const { date, time } = formatIST(d.getTime());
+              bars.push({ date, time, close: q.close });
+            }
+            intradayBars.set(sym, bars);
+          } catch { /* skip */ }
         }),
       );
     }
 
-    // 5. Build trades with exit prices at 2:55 PM IST
+    // 5. Build trades using pre-calculated daily exits + 2:55 PM upgrade
     const trades: BacktestTrade[] = [];
     const openUntilFinal = new Map<string, string>();
 
     for (const e of filtered) {
       const lastExit = openUntilFinal.get(e.symbol);
       if (lastExit && e.retestDate <= lastExit) continue;
-
-      const daily = dailyBars.get(e.symbol);
-      if (!daily) continue;
-
-      const entryIdx = daily.findIndex((b) => b.date >= e.retestDate);
-      if (entryIdx < 0) continue;
+      if (!e.dailyExits || e.dailyExits.length === 0) continue;
 
       const intraday = intradayBars.get(e.symbol);
 
       const exits: ExitInfo[] = [];
-      for (let hold = 1; hold <= 5; hold++) {
-        const exitIdx = entryIdx + hold;
-        if (exitIdx >= daily.length) break;
-        const exitDate = daily[exitIdx].date;
-
-        // Try to get exact 2:55 PM price from 5m data
-        let exitPrice = intraday ? find255Price(intraday, exitDate) : null;
-
-        // Fallback to daily close if 5m data unavailable for this date
-        if (exitPrice == null) {
-          exitPrice = daily[exitIdx].close;
-        }
+      for (const de of e.dailyExits) {
+        // Try 2:55 PM price from 5m data
+        let exitPrice = intraday ? find255Price(intraday, de.exitDate) : null;
+        if (exitPrice == null) exitPrice = de.exitPrice; // fallback to daily close
 
         const pnl = exitPrice - e.retestPrice;
         const pnlPct = (pnl / e.retestPrice) * 100;
         exits.push({
-          holdDays: hold,
-          exitDate,
+          holdDays: de.holdDays,
+          exitDate: de.exitDate,
           exitPrice: Math.round(exitPrice * 100) / 100,
           pnl: Math.round(pnl * 100) / 100,
           pnlPct: Math.round(pnlPct * 100) / 100,
