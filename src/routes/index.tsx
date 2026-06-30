@@ -117,6 +117,7 @@ function Index() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [retestRefreshing, setRetestRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("original");
+  const [activeSymbols, setActiveSymbols] = useState<Set<string>>(new Set());
   const runningRef = useRef(false);
   const retestRefreshRef = useRef(false);
   const paperRef = useRef<PaperTradeRef>(null);
@@ -401,8 +402,8 @@ function Index() {
         <div className="glass-card p-5">
           {activeTab === "original" && <SignalTable title="Original BUY / SELL Signals" subtitle="Signal candle generated directly by the Lorentzian classifier." rows={originals} />}
           {activeTab === "top10" && <Top10Panel retestBuys={retestBuys} retestSells={retestSells} />}
-          {activeTab === "retests" && <SignalTable title="All Retest Entries" subtitle="Every bar where price touched the exact Buy/Sell signal price." rows={retests} onAddTrade={paperRef.current?.addTrade} activeSymbols={paperRef.current?.activeSymbols} />}
-          <div style={{ display: activeTab === "paper" ? "block" : "none" }}><PaperTradePanel ref={paperRef} /></div>
+          {activeTab === "retests" && <SignalTable title="All Retest Entries" subtitle="Every bar where price touched the exact Buy/Sell signal price." rows={retests} onAddTrade={paperRef.current?.addTrade} activeSymbols={activeSymbols} />}
+          <div style={{ display: activeTab === "paper" ? "block" : "none" }}><PaperTradePanel ref={paperRef} onActiveChange={setActiveSymbols} /></div>
         </div>
 
         {/* ── Footer ── */}
@@ -612,9 +613,9 @@ function Top10Panel({ retestBuys, retestSells }: { retestBuys: FlatRow[]; retest
 
 // ── Paper Trade Panel ──
 
-export type PaperTradeRef = { addTrade: (stock: FlatRow) => void; activeSymbols: Set<string> };
+export type PaperTradeRef = { addTrade: (stock: FlatRow) => void };
 
-const PaperTradePanel = forwardRef<PaperTradeRef, {}>(function PaperTradePanel(_props, ref) {
+const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<string>) => void }>(function PaperTradePanel({ onActiveChange }, ref) {
   const fetchQuotes = useServerFn(getQuotesBatch);
   const runSimulate = useServerFn(simulatePaperTrade);
   const dbSave = useServerFn(savePaperTrade);
@@ -662,9 +663,10 @@ const PaperTradePanel = forwardRef<PaperTradeRef, {}>(function PaperTradePanel(_
     try { await dbSave({ data: trade }); } catch { /* best-effort */ }
   }, [dbSave]);
 
-  // Expose addTrade and activeSymbols to parent via ref.
-  const activeSymbols = useMemo(() => new Set(openTrades.map((t) => t.symbol)), [openTrades]);
-  useImperativeHandle(ref, () => ({ addTrade, activeSymbols }), [addTrade, activeSymbols]);
+  // Notify parent of active symbols whenever open trades change.
+  const activeSet = useMemo(() => new Set(openTrades.map((t) => t.symbol)), [openTrades]);
+  useEffect(() => { onActiveChange(activeSet); }, [activeSet, onActiveChange]);
+  useImperativeHandle(ref, () => ({ addTrade }), [addTrade]);
 
   // Close trade.
   const doCloseTrade = useCallback(async (id: string) => {
