@@ -220,9 +220,17 @@ export const backtestStock = createServerFn({ method: "POST" })
         }
 
         // Check for new Original signal on this bar → replace any pending
+        // Only consider signals after 12:00 PM IST (for intraday TFs)
         const newSig = signalAt.get(i);
         if (newSig) {
           const { date, time } = formatIST(bar.time);
+
+          // Filter: skip signals before 12 PM IST (for intraday TFs with real timestamps)
+          if (tf !== "1d") {
+            const hour = parseInt(time.slice(0, 2), 10);
+            if (hour < 12) continue; // Skip pre-noon signals
+          }
+
           pending = {
             dir: newSig.dir,
             price: newSig.price,
