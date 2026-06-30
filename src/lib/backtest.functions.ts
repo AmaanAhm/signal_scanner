@@ -99,10 +99,10 @@ function istMinutesFromTime(time: string): number {
 
 // ── Per-stock backtest ──
 // Signal → store → wait for retest → entry at signal close
-// Exit: +2% target OR 2:55 PM EOD same day
+// Exit: +N% target OR 2:55 PM EOD same day
 
 export const backtestStock = createServerFn({ method: "POST" })
-  .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "15m" | "30m" | "60m" | "1d" }) => input)
+  .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "15m" | "30m" | "60m" | "1d"; targetPct?: number }) => input)
   .handler(async ({ data }): Promise<{ entries: BacktestEntry[]; error?: string }> => {
     try {
       const { period1 } = dateRangeToDays(data.dateRange);
@@ -172,7 +172,7 @@ export const backtestStock = createServerFn({ method: "POST" })
             const { date: rtDate, time: rtTime } = formatIST(bar.time);
             const displayTime = tf === "1d" ? "Intraday" : rtTime;
             const entryPrice = pending.price;
-            const TARGET_PCT = 0.02; // 2%
+            const TARGET_PCT = (data.targetPct ?? 2) / 100;
 
             // ── Calculate exit ──
             let exitType: "TARGET" | "EOD" = "EOD";

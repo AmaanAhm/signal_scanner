@@ -924,6 +924,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const [customStart, setCustomStart] = useState(saved.current?.customStart ?? "");
   const [customEnd, setCustomEnd] = useState(saved.current?.customEnd ?? "");
   const [btTimeframe, setBtTimeframe] = useState<"15m" | "30m" | "60m" | "1d">(saved.current?.btTimeframe ?? "1d");
+  const [targetPct, setTargetPct] = useState<number>(saved.current?.targetPct ?? 2);
   const [result, setResult] = useState<BacktestResult | null>(saved.current?.result ?? null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, phase: "" });
@@ -932,10 +933,10 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
     if (typeof window === "undefined") return;
     try {
       localStorage.setItem("bt_state", JSON.stringify({
-        enabled, dateRangeKey, customStart, customEnd, btTimeframe, result,
+        enabled, dateRangeKey, customStart, customEnd, btTimeframe, targetPct, result,
       }));
     } catch { /* quota exceeded */ }
-  }, [enabled, dateRangeKey, customStart, customEnd, btTimeframe, result]);
+  }, [enabled, dateRangeKey, customStart, customEnd, btTimeframe, targetPct, result]);
 
   const effectiveDateRange: DateRange = dateRangeKey === "custom"
     ? { start: customStart, end: customEnd }
@@ -957,7 +958,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
         const item = queue.shift();
         if (!item) break;
         try {
-          const res = await runStock({ data: { symbol: item.symbol, name: item.name, dateRange: effectiveDateRange, timeframe: btTimeframe } }) as any;
+          const res = await runStock({ data: { symbol: item.symbol, name: item.name, dateRange: effectiveDateRange, timeframe: btTimeframe, targetPct } }) as any;
           if (res.entries?.length > 0) allEntries.push(...res.entries);
           if (res.error) errCount++;
         } catch { errCount++; }
@@ -987,7 +988,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
     } finally {
       setRunning(false);
     }
-  }, [effectiveDateRange, btTimeframe, runStock, runAggregate]);
+  }, [effectiveDateRange, btTimeframe, targetPct, runStock, runAggregate]);
 
   const sortedTrades = useMemo(() => {
     if (!result) return [];
@@ -1046,7 +1047,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
       {enabled && (
         <>
           <p className="mt-0.5 mb-4 text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>
-            Entry on first retest of signal price. Exit at <strong>+2% profit</strong> or <strong>2:55 PM</strong> same day. No overnight positions.
+            Entry on first retest of signal price. Exit at <strong>+{targetPct}% profit</strong> or <strong>2:55 PM</strong> same day. No overnight positions.
           </p>
 
           {/* Date Range + Timeframe + Run */}
@@ -1069,6 +1070,12 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                 <option value="30m">30 Min</option>
                 <option value="60m">1 Hour</option>
                 <option value="1d">1 Day</option>
+              </select>
+            </label>
+            <label className="text-xs font-medium" style={{ color: "oklch(0.40 0.03 255)" }}>
+              Target %
+              <select value={targetPct} onChange={(e) => setTargetPct(Number(e.target.value))} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid oklch(0.85 0.02 255)" }}>
+                {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v}>{v}%</option>)}
               </select>
             </label>
             {dateRangeKey === "custom" && (
@@ -1159,7 +1166,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                 <div className="stat-card">
                   <div className="text-xs font-semibold mb-2" style={{ color: "oklch(0.35 0.03 260)" }}>Exit Breakdown</div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>+2% Target</span>
+                    <span style={{ color: "oklch(0.50 0.03 255)" }}>+{targetPct}% Target</span>
                     <span className="mono font-semibold text-right text-profit">{result.summary.targetExits}</span>
                     <span style={{ color: "oklch(0.50 0.03 255)" }}>2:55 PM EOD</span>
                     <span className="mono font-semibold text-right" style={{ color: "oklch(0.55 0.15 40)" }}>{result.summary.eodExits}</span>
@@ -1219,7 +1226,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                               fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3,
                               background: t.exitType === "TARGET" ? "oklch(0.90 0.10 200)" : "oklch(0.92 0.06 60)",
                               color: t.exitType === "TARGET" ? "oklch(0.25 0.14 200)" : "oklch(0.40 0.10 60)",
-                            }}>{t.exitType === "TARGET" ? "+2%" : "2:55PM"}</span>
+                            }}>{t.exitType === "TARGET" ? `+${targetPct}%` : "2:55PM"}</span>
                           </td>
                           <td className="mono text-xs">{t.exitTime}</td>
                           <td className="mono text-right">{t.exitPrice.toFixed(2)}</td>
