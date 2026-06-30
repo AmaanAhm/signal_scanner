@@ -417,10 +417,10 @@ function Index() {
               {activeTab === "original" && <SignalTable title="Original BUY / SELL Signals" subtitle="Signal candle generated directly by the Lorentzian classifier." rows={originals} />}
               {activeTab === "top10" && <Top10Panel retestBuys={retestBuys} retestSells={retestSells} />}
               {activeTab === "retests" && <SignalTable title="All Retest Entries" subtitle="Every bar where price touched the exact Buy/Sell signal price." rows={retests} onAddTrade={paperRef.current?.addTrade} activeSymbols={activeSymbols} />}
-              {activeTab === "backtest" && <BacktestPanel rows={rows} />}
             </>
           )}
           <div style={{ display: activeTab === "paper" ? "block" : "none" }}><PaperTradePanel ref={paperRef} onActiveChange={setActiveSymbols} /></div>
+          <div style={{ display: activeTab === "backtest" ? "block" : "none" }}><BacktestPanel rows={rows} /></div>
         </div>
 
         {/* ── Footer ── */}
