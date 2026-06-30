@@ -85,17 +85,18 @@ function formatIST(epochMs: number): { date: string; time: string } {
 // ── Per-stock backtest: runs Lorentzian, finds all BUY signals + retests ──
 
 export const backtestStock = createServerFn({ method: "POST" })
-  .validator((input: { symbol: string; name: string; dateRange: DateRange }) => input)
+  .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "15m" | "30m" | "60m" | "1d" }) => input)
   .handler(async ({ data }): Promise<{ entries: BacktestEntry[]; error?: string }> => {
     try {
       const { period1 } = dateRangeToDays(data.dateRange);
-      // Fetch extra bars for Lorentzian warmup (~300 bars)
-      const warmupDays = 400;
+      const tf = data.timeframe || "1d";
+      // For intraday Yahoo limits history, fetch as much as possible
+      const warmupDays = tf === "1d" ? 400 : 60;
       const fetchStart = new Date(period1.getTime() - warmupDays * 86400_000);
 
       const result = await yf.chart(data.symbol, {
         period1: fetchStart,
-        interval: "1d",
+        interval: tf as "1d" | "15m" | "30m" | "60m",
       }, { validateResult: false }) as any;
 
       const bars: Bar[] = [];

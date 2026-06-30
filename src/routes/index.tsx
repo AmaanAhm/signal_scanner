@@ -904,17 +904,18 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const runAggregate = useServerFn(aggregateBacktest);
 
   const [enabled, setEnabled] = useState(false);
-  const [dateRange, setDateRange] = useState<DateRange>("1y");
+  const [dateRangeKey, setDateRangeKey] = useState("1y");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+  const [btTimeframe, setBtTimeframe] = useState<"15m" | "30m" | "60m" | "1d">("1d");
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, phase: "" });
   const [selectedHold, setSelectedHold] = useState(3);
 
-  const effectiveDateRange: DateRange = dateRange === "custom" as any
+  const effectiveDateRange: DateRange = dateRangeKey === "custom"
     ? { start: customStart, end: customEnd }
-    : dateRange;
+    : dateRangeKey as DateRange;
 
   const handleRun = useCallback(async () => {
     setRunning(true);
@@ -932,7 +933,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
         const item = queue.shift();
         if (!item) break;
         try {
-          const res = await runStock({ data: { symbol: item.symbol, name: item.name, dateRange: effectiveDateRange } }) as any;
+          const res = await runStock({ data: { symbol: item.symbol, name: item.name, dateRange: effectiveDateRange, timeframe: btTimeframe } }) as any;
           if (res.entries?.length > 0) allEntries.push(...res.entries);
         } catch { /* skip */ }
         finally {
@@ -1025,11 +1026,11 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
             Replays historical daily data using the Lorentzian classifier. Tests BUY Retest entries with 1–5 day holds. Top 10 per day, no overlapping trades.
           </p>
 
-          {/* Date Range + Run */}
+          {/* Date Range + Timeframe + Run */}
           <div className="mb-5 flex flex-wrap items-end gap-3">
             <div>
               <label className="text-xs font-semibold mb-1 block" style={{ color: "oklch(0.48 0.03 255)" }}>Date Range</label>
-              <select className="ctrl-select" value={typeof dateRange === "string" ? dateRange : "custom"} onChange={(e) => setDateRange(e.target.value as any)}>
+              <select className="ctrl-select" value={dateRangeKey} onChange={(e) => setDateRangeKey(e.target.value)}>
                 <option value="6m">Last 6 Months</option>
                 <option value="1y">Last 1 Year</option>
                 <option value="2y">Last 2 Years</option>
@@ -1038,7 +1039,16 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                 <option value="custom">Custom Range</option>
               </select>
             </div>
-            {(typeof dateRange !== "string") && (
+            <div>
+              <label className="text-xs font-semibold mb-1 block" style={{ color: "oklch(0.48 0.03 255)" }}>Timeframe</label>
+              <select className="ctrl-select" value={btTimeframe} onChange={(e) => setBtTimeframe(e.target.value as any)}>
+                <option value="15m">15 Min</option>
+                <option value="30m">30 Min</option>
+                <option value="60m">60 Min</option>
+                <option value="1d">1 Day</option>
+              </select>
+            </div>
+            {dateRangeKey === "custom" && (
               <>
                 <div>
                   <label className="text-xs font-semibold mb-1 block" style={{ color: "oklch(0.48 0.03 255)" }}>Start</label>
