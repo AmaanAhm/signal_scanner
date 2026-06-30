@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImper
 import { useServerFn } from "@tanstack/react-start";
 import { FULL_UNIVERSE } from "@/lib/nse500";
 import { scanStock, checkRetestBatch, getQuotesBatch, simulatePaperTrade, type PaperTradeResult } from "@/lib/scanner.functions";
-import { runBacktest, type BacktestResult } from "@/lib/backtest.functions";
+import { backtestStock, aggregateBacktest, type BacktestResult, type BacktestTrade, type HoldPeriodSummary, type DateRange } from "@/lib/backtest.functions";
 import {
   saveScanResults,
   loadScanResults,
@@ -897,40 +897,68 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
 
 // ── Backtest Panel ──
 
+const BT_CONCURRENCY = 4;
+
 function BacktestPanel({ rows }: { rows: ScanRow[] }) {
-  const run = useServerFn(runBacktest);
+  const runStock = useServerFn(backtestStock);
+  const runAggregate = useServerFn(aggregateBacktest);
+
+  const [enabled, setEnabled] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>("1y");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState("");
+  const [progress, setProgress] = useState({ done: 0, total: 0, phase: "" });
   const [selectedHold, setSelectedHold] = useState(3);
 
-  const buyRetests = useMemo(() => {
-    const all: Array<{ symbol: string; name: string; signalDate: string; signalTime: string; signalPrice: number }> = [];
-    for (const r of rows) {
-      for (const rt of r.retests || []) {
-        if (rt.signal === "BUY") {
-          all.push({ symbol: r.symbol, name: r.name, signalDate: rt.signalDate, signalTime: rt.signalTime, signalPrice: rt.signalPrice });
+  const effectiveDateRange: DateRange = dateRange === "custom" as any
+    ? { start: customStart, end: customEnd }
+    : dateRange;
+
+  const handleRun = useCallback(async () => {
+    setRunning(true);
+    setResult(null);
+    const list = FULL_UNIVERSE;
+    setProgress({ done: 0, total: list.length, phase: "Scanning stocks…" });
+
+    // Phase 1: Run Lorentzian on each stock
+    const allEntries: Array<{ symbol: string; name: string; signalDate: string; signalTime: string; signalPrice: number; retestDate: string; retestTime: string; retestPrice: number }> = [];
+    const queue = [...list];
+    let done = 0;
+
+    async function worker() {
+      while (queue.length > 0) {
+        const item = queue.shift();
+        if (!item) break;
+        try {
+          const res = await runStock({ data: { symbol: item.symbol, name: item.name, dateRange: effectiveDateRange } }) as any;
+          if (res.entries?.length > 0) allEntries.push(...res.entries);
+        } catch { /* skip */ }
+        finally {
+          done++;
+          if (done % 3 === 0 || done === list.length) {
+            setProgress({ done, total: list.length, phase: `Scanning stocks… (${done}/${list.length})` });
+          }
         }
       }
     }
-    return all;
-  }, [rows]);
 
-  const handleRun = useCallback(async () => {
-    if (buyRetests.length === 0) return;
-    setRunning(true);
-    setProgress(`Processing ${buyRetests.length} BUY retest entries…`);
+    await Promise.all(Array.from({ length: BT_CONCURRENCY }, () => worker()));
+
+    // Phase 2: Aggregate
+    setProgress({ done: list.length, total: list.length, phase: "Aggregating results…" });
     try {
-      const res = await run({ data: { retests: buyRetests } }) as BacktestResult;
+      const res = await runAggregate({ data: { allEntries, dateRange: effectiveDateRange } }) as BacktestResult;
       setResult(res);
     } catch (e: any) {
-      setProgress(`Error: ${e.message}`);
+      setProgress({ done: 0, total: 0, phase: `Error: ${e.message}` });
     } finally {
       setRunning(false);
     }
-  }, [buyRetests, run]);
+  }, [effectiveDateRange, runStock, runAggregate]);
 
-  // Find best holding period
+  // Best holding period
   const bestHold = result?.summaries.reduce((best, s) => (s.avgReturn > best.avgReturn ? s : best), result.summaries[0]);
 
   // Filtered trades for selected holding period
@@ -942,136 +970,219 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
       .sort((a, b) => `${b.entryDate} ${b.entryTime}`.localeCompare(`${a.entryDate} ${a.entryTime}`));
   }, [result, selectedHold]);
 
+  // Excel/CSV export
+  const exportCSV = useCallback(() => {
+    if (!filteredTrades.length) return;
+    const header = "#,Symbol,Company,Entry Date,Entry Time,Entry Price,Exit Date,Exit Price,Holding Days,P&L (₹),P&L (%),Result";
+    const rows = filteredTrades.map((t, i) =>
+      `${i + 1},${t.symbol.replace(".NS", "")},"${t.name}",${t.entryDate},${t.entryTime},${t.entryPrice.toFixed(2)},${t.exit.exitDate},${t.exit.exitPrice.toFixed(2)},${selectedHold},${t.exit.pnl.toFixed(2)},${t.exit.pnlPct}%,${t.exit.win ? "WIN" : "LOSS"}`
+    );
+    // Add summary
+    const s = result?.summaries.find((s) => s.holdDays === selectedHold);
+    const summaryRows = s ? [
+      "", "SUMMARY", "",
+      `Total Trades,${s.totalTrades}`,
+      `Winning Trades,${s.wins}`,
+      `Losing Trades,${s.losses}`,
+      `Win Rate,${s.winRate}%`,
+      `Average Return,${s.avgReturn}%`,
+      `Total Return,${s.totalReturn}%`,
+      `Maximum Gain,${s.maxGain}%`,
+      `Maximum Loss,${s.maxLoss}%`,
+    ] : [];
+    const csv = [header, ...rows, ...summaryRows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backtest_${selectedHold}day_hold.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filteredTrades, selectedHold, result]);
+
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+
   return (
     <div>
-      {/* Header */}
+      {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="section-title">Backtest — BUY Retest Strategy</div>
-        <button
-          className="scan-button"
-          disabled={running || buyRetests.length === 0}
-          onClick={handleRun}
-          style={{ opacity: running ? 0.6 : 1 }}
-        >
-          {running ? "Running…" : `Run Backtest (${buyRetests.length} entries)`}
-        </button>
+        <div className="section-title">Historical Backtest — BUY Retest Strategy</div>
+        <label className="flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: "oklch(0.48 0.03 255)" }}>
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="accent-[oklch(0.50_0.16_200)]" />
+          Backtest Mode
+        </label>
       </div>
-      <p className="mt-0.5 mb-4 text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>
-        Tests fixed 1–5 day holding periods using BUY Retest entries. Top 10 per day. No overlapping trades per symbol.
-      </p>
 
-      {running && (
-        <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <div style={{ width: 32, height: 32, border: "3px solid oklch(0.90 0.01 255)", borderTopColor: "oklch(0.55 0.17 200)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-          <span className="text-sm" style={{ color: "oklch(0.50 0.03 255)" }}>{progress}</span>
-        </div>
-      )}
-
-      {!running && !result && (
+      {!enabled && (
         <div className="py-12 text-center text-sm" style={{ color: "oklch(0.50 0.03 255)" }}>
-          {buyRetests.length === 0 ? "Run a scan first to generate BUY Retest entries." : "Click \"Run Backtest\" to start."}
+          Enable Backtest Mode to run historical analysis.
         </div>
       )}
 
-      {!running && result && (
+      {enabled && (
         <>
-          {/* ── Summary Cards ── */}
-          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {result.summaries.map((s) => {
-              const isBest = s.holdDays === bestHold?.holdDays;
-              const isSelected = s.holdDays === selectedHold;
-              return (
-                <div
-                  key={s.holdDays}
-                  className="stat-card cursor-pointer"
-                  onClick={() => setSelectedHold(s.holdDays)}
-                  style={{
-                    borderColor: isBest ? "oklch(0.50 0.16 150)" : isSelected ? "oklch(0.55 0.17 200)" : undefined,
-                    background: isSelected ? "oklch(0.97 0.01 200)" : undefined,
-                    boxShadow: isBest ? "0 0 0 2px oklch(0.50 0.16 150 / 20%)" : undefined,
-                  }}
-                >
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <span className="text-xs font-semibold" style={{ color: "oklch(0.35 0.03 260)" }}>{s.holdDays}-Day Hold</span>
-                    {isBest && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 4, background: "oklch(0.50 0.16 150)", color: "#fff", fontWeight: 600 }}>BEST</span>}
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Trades</span>
-                    <span className="mono font-semibold text-right" style={{ color: "oklch(0.25 0.03 260)" }}>{s.totalTrades}</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Win Rate</span>
-                    <span className="mono font-semibold text-right" style={{ color: s.winRate >= 50 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{s.winRate}%</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Avg Return</span>
-                    <span className="mono font-semibold text-right" style={{ color: s.avgReturn >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{s.avgReturn > 0 ? "+" : ""}{s.avgReturn}%</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Total Return</span>
-                    <span className="mono font-semibold text-right" style={{ color: s.totalReturn >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{s.totalReturn > 0 ? "+" : ""}{s.totalReturn}%</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Max Gain</span>
-                    <span className="mono font-semibold text-right text-profit">{s.maxGain > 0 ? "+" : ""}{s.maxGain}%</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Max Loss</span>
-                    <span className="mono font-semibold text-right text-loss">{s.maxLoss > 0 ? "+" : ""}{s.maxLoss}%</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>W / L</span>
-                    <span className="mono font-semibold text-right" style={{ color: "oklch(0.35 0.03 260)" }}>{s.wins} / {s.losses}</span>
-                  </div>
+          <p className="mt-0.5 mb-4 text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>
+            Replays historical daily data using the Lorentzian classifier. Tests BUY Retest entries with 1–5 day holds. Top 10 per day, no overlapping trades.
+          </p>
+
+          {/* Date Range + Run */}
+          <div className="mb-5 flex flex-wrap items-end gap-3">
+            <div>
+              <label className="text-xs font-semibold mb-1 block" style={{ color: "oklch(0.48 0.03 255)" }}>Date Range</label>
+              <select className="ctrl-select" value={typeof dateRange === "string" ? dateRange : "custom"} onChange={(e) => setDateRange(e.target.value as any)}>
+                <option value="6m">Last 6 Months</option>
+                <option value="1y">Last 1 Year</option>
+                <option value="2y">Last 2 Years</option>
+                <option value="3y">Last 3 Years</option>
+                <option value="4y">Last 4 Years</option>
+                <option value="custom">Custom Range</option>
+              </select>
+            </div>
+            {(typeof dateRange !== "string") && (
+              <>
+                <div>
+                  <label className="text-xs font-semibold mb-1 block" style={{ color: "oklch(0.48 0.03 255)" }}>Start</label>
+                  <input type="date" className="ctrl-input" value={customStart} onChange={(e) => setCustomStart(e.target.value)} />
                 </div>
-              );
-            })}
+                <div>
+                  <label className="text-xs font-semibold mb-1 block" style={{ color: "oklch(0.48 0.03 255)" }}>End</label>
+                  <input type="date" className="ctrl-input" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} />
+                </div>
+              </>
+            )}
+            <button className="scan-button" disabled={running} onClick={handleRun} style={{ opacity: running ? 0.6 : 1 }}>
+              {running ? "Running…" : "Run Backtest"}
+            </button>
           </div>
 
-          {/* ── Trades Table ── */}
-          <div className="mb-2 flex items-center gap-2">
-            <div className="section-title">{selectedHold}-Day Hold Trades <span className="count">({filteredTrades.length})</span></div>
-          </div>
-          <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.90 0.01 255)" }}>
-            <table className="trading-table">
-              <thead>
-                <tr>
-                  <th className="text-left">#</th>
-                  <th className="text-left">Symbol</th>
-                  <th className="text-left">Company</th>
-                  <th className="text-left">Entry Date</th>
-                  <th className="text-left">Entry Time</th>
-                  <th className="text-right">Entry ₹</th>
-                  <th className="text-left">Exit Date</th>
-                  <th className="text-right">Exit ₹</th>
-                  <th className="text-right">P&L ₹</th>
-                  <th className="text-right">P&L %</th>
-                  <th className="text-center">Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTrades.length === 0 ? (
-                  <tr><td colSpan={11} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No trades for this holding period.</td></tr>
-                ) : (
-                  filteredTrades.map((t, i) => (
-                    <tr key={`${t.symbol}-${t.entryDate}-${i}`}>
-                      <td className="mono text-xs" style={{ color: "oklch(0.50 0.03 255)" }}>{i + 1}</td>
-                      <td className="font-semibold" style={{ color: "oklch(0.30 0.04 260)" }}>{t.symbol.replace(".NS", "")}</td>
-                      <td className="text-xs" style={{ color: "oklch(0.45 0.02 255)" }}>{t.name}</td>
-                      <td className="mono text-xs">{t.entryDate}</td>
-                      <td className="mono text-xs">{t.entryTime}</td>
-                      <td className="mono text-right">{t.entryPrice.toFixed(2)}</td>
-                      <td className="mono text-xs">{t.exit.exitDate}</td>
-                      <td className="mono text-right">{t.exit.exitPrice.toFixed(2)}</td>
-                      <td className="mono text-right font-semibold" style={{ color: t.exit.pnl >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>
-                        {t.exit.pnl >= 0 ? "+" : ""}{t.exit.pnl.toFixed(2)}
-                      </td>
-                      <td className="mono text-right font-semibold" style={{ color: t.exit.pnlPct >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>
-                        {t.exit.pnlPct >= 0 ? "+" : ""}{t.exit.pnlPct}%
-                      </td>
-                      <td className="text-center">
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
-                          background: t.exit.win ? "oklch(0.92 0.08 150)" : "oklch(0.93 0.08 25)",
-                          color: t.exit.win ? "oklch(0.30 0.15 150)" : "oklch(0.40 0.20 25)",
-                        }}>
-                          {t.exit.win ? "WIN" : "LOSS"}
-                        </span>
-                      </td>
+          {/* Progress */}
+          {running && (
+            <div className="mb-5">
+              <div className="flex items-center gap-3 mb-2">
+                <div style={{ width: 24, height: 24, border: "3px solid oklch(0.90 0.01 255)", borderTopColor: "oklch(0.55 0.17 200)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                <span className="text-sm" style={{ color: "oklch(0.50 0.03 255)" }}>{progress.phase}</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: "oklch(0.92 0.01 255)", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${pct}%`, borderRadius: 3, background: "linear-gradient(90deg, oklch(0.55 0.17 200), oklch(0.50 0.16 150))", transition: "width 0.3s" }} />
+              </div>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!running && !result && (
+            <div className="py-8 text-center text-sm" style={{ color: "oklch(0.50 0.03 255)" }}>
+              Select a date range and click "Run Backtest".
+            </div>
+          )}
+
+          {/* Results */}
+          {!running && result && (
+            <>
+              {/* Meta */}
+              <div className="mb-4 flex flex-wrap gap-4 text-xs" style={{ color: "oklch(0.50 0.03 255)" }}>
+                <span>Period: {result.dateRangeUsed.start} → {result.dateRangeUsed.end}</span>
+                <span>Stocks scanned: {result.totalStocksProcessed}</span>
+                <span>Stocks with trades: {result.totalStocksWithSignals}</span>
+              </div>
+
+              {/* Summary Cards */}
+              <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+                {result.summaries.map((s) => {
+                  const isBest = s.holdDays === bestHold?.holdDays;
+                  const isSelected = s.holdDays === selectedHold;
+                  return (
+                    <div key={s.holdDays} className="stat-card cursor-pointer" onClick={() => setSelectedHold(s.holdDays)}
+                      style={{
+                        borderColor: isBest ? "oklch(0.50 0.16 150)" : isSelected ? "oklch(0.55 0.17 200)" : undefined,
+                        background: isSelected ? "oklch(0.97 0.01 200)" : undefined,
+                        boxShadow: isBest ? "0 0 0 2px oklch(0.50 0.16 150 / 20%)" : undefined,
+                      }}>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="text-xs font-semibold" style={{ color: "oklch(0.35 0.03 260)" }}>{s.holdDays}-Day Hold</span>
+                        {isBest && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 4, background: "oklch(0.50 0.16 150)", color: "#fff", fontWeight: 600 }}>BEST</span>}
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                        <span style={{ color: "oklch(0.50 0.03 255)" }}>Trades</span>
+                        <span className="mono font-semibold text-right" style={{ color: "oklch(0.25 0.03 260)" }}>{s.totalTrades}</span>
+                        <span style={{ color: "oklch(0.50 0.03 255)" }}>Win Rate</span>
+                        <span className="mono font-semibold text-right" style={{ color: s.winRate >= 50 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{s.winRate}%</span>
+                        <span style={{ color: "oklch(0.50 0.03 255)" }}>Avg Return</span>
+                        <span className="mono font-semibold text-right" style={{ color: s.avgReturn >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{s.avgReturn > 0 ? "+" : ""}{s.avgReturn}%</span>
+                        <span style={{ color: "oklch(0.50 0.03 255)" }}>Total Return</span>
+                        <span className="mono font-semibold text-right" style={{ color: s.totalReturn >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{s.totalReturn > 0 ? "+" : ""}{s.totalReturn}%</span>
+                        <span style={{ color: "oklch(0.50 0.03 255)" }}>Max Gain</span>
+                        <span className="mono font-semibold text-right text-profit">{s.maxGain > 0 ? "+" : ""}{s.maxGain}%</span>
+                        <span style={{ color: "oklch(0.50 0.03 255)" }}>Max Loss</span>
+                        <span className="mono font-semibold text-right text-loss">{s.maxLoss > 0 ? "+" : ""}{s.maxLoss}%</span>
+                        <span style={{ color: "oklch(0.50 0.03 255)" }}>W / L</span>
+                        <span className="mono font-semibold text-right" style={{ color: "oklch(0.35 0.03 260)" }}>{s.wins} / {s.losses}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Trades Table */}
+              <div className="mb-2 flex flex-wrap items-center gap-3">
+                <div className="section-title">{selectedHold}-Day Hold Trades <span className="count">({filteredTrades.length})</span></div>
+                <button onClick={exportCSV} className="text-xs font-semibold px-3 py-1.5 rounded-md" style={{ background: "oklch(0.45 0.16 150)", color: "#fff" }}>
+                  ⬇ Export CSV
+                </button>
+              </div>
+              <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.90 0.01 255)" }}>
+                <table className="trading-table">
+                  <thead>
+                    <tr>
+                      <th className="text-left">#</th>
+                      <th className="text-left">Symbol</th>
+                      <th className="text-left">Company</th>
+                      <th className="text-left">Entry Date</th>
+                      <th className="text-left">Entry Time</th>
+                      <th className="text-right">Entry ₹</th>
+                      <th className="text-left">Exit Date</th>
+                      <th className="text-right">Exit ₹</th>
+                      <th className="text-right">P&L ₹</th>
+                      <th className="text-right">P&L %</th>
+                      <th className="text-center">Result</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {filteredTrades.length === 0 ? (
+                      <tr><td colSpan={11} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No trades for this holding period.</td></tr>
+                    ) : (
+                      filteredTrades.map((t, i) => (
+                        <tr key={`${t.symbol}-${t.entryDate}-${i}`}>
+                          <td className="mono text-xs" style={{ color: "oklch(0.50 0.03 255)" }}>{i + 1}</td>
+                          <td className="font-semibold" style={{ color: "oklch(0.30 0.04 260)" }}>{t.symbol.replace(".NS", "")}</td>
+                          <td className="text-xs" style={{ color: "oklch(0.45 0.02 255)" }}>{t.name}</td>
+                          <td className="mono text-xs">{t.entryDate}</td>
+                          <td className="mono text-xs">{t.entryTime}</td>
+                          <td className="mono text-right">{t.entryPrice.toFixed(2)}</td>
+                          <td className="mono text-xs">{t.exit.exitDate}</td>
+                          <td className="mono text-right">{t.exit.exitPrice.toFixed(2)}</td>
+                          <td className="mono text-right font-semibold" style={{ color: t.exit.pnl >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>
+                            {t.exit.pnl >= 0 ? "+" : ""}{t.exit.pnl.toFixed(2)}
+                          </td>
+                          <td className="mono text-right font-semibold" style={{ color: t.exit.pnlPct >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>
+                            {t.exit.pnlPct >= 0 ? "+" : ""}{t.exit.pnlPct}%
+                          </td>
+                          <td className="text-center">
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+                              background: t.exit.win ? "oklch(0.92 0.08 150)" : "oklch(0.93 0.08 25)",
+                              color: t.exit.win ? "oklch(0.30 0.15 150)" : "oklch(0.40 0.20 25)",
+                            }}>
+                              {t.exit.win ? "WIN" : "LOSS"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
