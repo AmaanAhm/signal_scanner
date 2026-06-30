@@ -925,6 +925,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const [customEnd, setCustomEnd] = useState(saved.current?.customEnd ?? "");
   const [btTimeframe, setBtTimeframe] = useState<"15m" | "30m" | "60m" | "1d">(saved.current?.btTimeframe ?? "1d");
   const [targetPct, setTargetPct] = useState<number>(saved.current?.targetPct ?? 2);
+  const [stopLossPct, setStopLossPct] = useState<number>(saved.current?.stopLossPct ?? 2);
   const [result, setResult] = useState<BacktestResult | null>(saved.current?.result ?? null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, phase: "" });
@@ -933,10 +934,10 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
     if (typeof window === "undefined") return;
     try {
       localStorage.setItem("bt_state", JSON.stringify({
-        enabled, dateRangeKey, customStart, customEnd, btTimeframe, targetPct, result,
+        enabled, dateRangeKey, customStart, customEnd, btTimeframe, targetPct, stopLossPct, result,
       }));
     } catch { /* quota exceeded */ }
-  }, [enabled, dateRangeKey, customStart, customEnd, btTimeframe, targetPct, result]);
+  }, [enabled, dateRangeKey, customStart, customEnd, btTimeframe, targetPct, stopLossPct, result]);
 
   const effectiveDateRange: DateRange = dateRangeKey === "custom"
     ? { start: customStart, end: customEnd }
@@ -958,7 +959,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
         const item = queue.shift();
         if (!item) break;
         try {
-          const res = await runStock({ data: { symbol: item.symbol, name: item.name, dateRange: effectiveDateRange, timeframe: btTimeframe, targetPct } }) as any;
+          const res = await runStock({ data: { symbol: item.symbol, name: item.name, dateRange: effectiveDateRange, timeframe: btTimeframe, targetPct, stopLossPct } }) as any;
           if (res.entries?.length > 0) allEntries.push(...res.entries);
           if (res.error) errCount++;
         } catch { errCount++; }
@@ -988,7 +989,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
     } finally {
       setRunning(false);
     }
-  }, [effectiveDateRange, btTimeframe, targetPct, runStock, runAggregate]);
+  }, [effectiveDateRange, btTimeframe, targetPct, stopLossPct, runStock, runAggregate]);
 
   const sortedTrades = useMemo(() => {
     if (!result) return [];
@@ -1047,7 +1048,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
       {enabled && (
         <>
           <p className="mt-0.5 mb-4 text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>
-            Entry on first retest of signal price. Exit at <strong>+{targetPct}% profit</strong> or <strong>2:55 PM</strong> same day. No overnight positions.
+            Entry on first retest of signal price. Exit at <strong>+{targetPct}% profit</strong>, <strong>-{stopLossPct}% stop loss</strong>, or <strong>2:55 PM</strong> same day.
           </p>
 
           {/* Date Range + Timeframe + Run */}
@@ -1075,6 +1076,12 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
             <label className="text-xs font-medium" style={{ color: "oklch(0.40 0.03 255)" }}>
               Target %
               <select value={targetPct} onChange={(e) => setTargetPct(Number(e.target.value))} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid oklch(0.85 0.02 255)" }}>
+                {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v}>{v}%</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-medium" style={{ color: "oklch(0.40 0.03 255)" }}>
+              Stop Loss %
+              <select value={stopLossPct} onChange={(e) => setStopLossPct(Number(e.target.value))} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid oklch(0.85 0.02 255)" }}>
                 {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v}>{v}%</option>)}
               </select>
             </label>
@@ -1168,6 +1175,8 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                     <span style={{ color: "oklch(0.50 0.03 255)" }}>+{targetPct}% Target</span>
                     <span className="mono font-semibold text-right text-profit">{result.summary.targetExits}</span>
+                    <span style={{ color: "oklch(0.50 0.03 255)" }}>-{stopLossPct}% SL</span>
+                    <span className="mono font-semibold text-right text-loss">{result.summary.stoplossExits}</span>
                     <span style={{ color: "oklch(0.50 0.03 255)" }}>2:55 PM EOD</span>
                     <span className="mono font-semibold text-right" style={{ color: "oklch(0.55 0.15 40)" }}>{result.summary.eodExits}</span>
                     <span style={{ color: "oklch(0.50 0.03 255)" }}>Avg Hold</span>
@@ -1224,9 +1233,9 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                           <td className="text-center">
                             <span style={{
                               fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3,
-                              background: t.exitType === "TARGET" ? "oklch(0.90 0.10 200)" : "oklch(0.92 0.06 60)",
-                              color: t.exitType === "TARGET" ? "oklch(0.25 0.14 200)" : "oklch(0.40 0.10 60)",
-                            }}>{t.exitType === "TARGET" ? `+${targetPct}%` : "2:55PM"}</span>
+                              background: t.exitType === "TARGET" ? "oklch(0.90 0.10 200)" : t.exitType === "STOPLOSS" ? "oklch(0.93 0.08 25)" : "oklch(0.92 0.06 60)",
+                              color: t.exitType === "TARGET" ? "oklch(0.25 0.14 200)" : t.exitType === "STOPLOSS" ? "oklch(0.40 0.20 25)" : "oklch(0.40 0.10 60)",
+                            }}>{t.exitType === "TARGET" ? `+${targetPct}%` : t.exitType === "STOPLOSS" ? `-${stopLossPct}%` : "2:55PM"}</span>
                           </td>
                           <td className="mono text-xs">{t.exitTime}</td>
                           <td className="mono text-right">{t.exitPrice.toFixed(2)}</td>

@@ -19,7 +19,7 @@ interface BacktestEntry {
   retestDate: string;
   retestTime: string;
   retestPrice: number;
-  exitType: "TARGET" | "EOD";
+  exitType: "TARGET" | "STOPLOSS" | "EOD";
   exitPrice: number;
   exitTime: string;
   pnl: number;
@@ -35,7 +35,7 @@ export interface BacktestTrade {
   entryDate: string;
   entryTime: string;
   entryPrice: number;
-  exitType: "TARGET" | "EOD";
+  exitType: "TARGET" | "STOPLOSS" | "EOD";
   exitPrice: number;
   exitTime: string;
   pnl: number;
@@ -55,6 +55,7 @@ export interface BacktestSummary {
   profitFactor: number;
   avgHoldingMinutes: number;
   targetExits: number;
+  stoplossExits: number;
   eodExits: number;
   maxGain: number;
   maxLoss: number;
@@ -97,16 +98,48 @@ function istMinutesFromTime(time: string): number {
   return h * 60 + m;
 }
 
+// Helper: check if target or stoploss was hit on a bar
+function checkExitOnBar(
+  dir: "BUY" | "SELL",
+  entryPrice: number,
+  bar: { high: number; low: number },
+  targetPct: number,
+  slPct: number,
+): { type: "TARGET" | "STOPLOSS"; price: number } | null {
+  // For BUY: target = price goes UP, stoploss = price goes DOWN
+  // For SELL: target = price goes DOWN, stoploss = price goes UP
+  if (dir === "BUY") {
+    // Check stoploss first (more conservative — assume worst case hits first)
+    if (bar.low <= entryPrice * (1 - slPct)) {
+      return { type: "STOPLOSS", price: Math.round(entryPrice * (1 - slPct) * 100) / 100 };
+    }
+    if (bar.high >= entryPrice * (1 + targetPct)) {
+      return { type: "TARGET", price: Math.round(entryPrice * (1 + targetPct) * 100) / 100 };
+    }
+  } else {
+    // SELL (short): stoploss = price goes UP, target = price goes DOWN
+    if (bar.high >= entryPrice * (1 + slPct)) {
+      return { type: "STOPLOSS", price: Math.round(entryPrice * (1 + slPct) * 100) / 100 };
+    }
+    if (bar.low <= entryPrice * (1 - targetPct)) {
+      return { type: "TARGET", price: Math.round(entryPrice * (1 - targetPct) * 100) / 100 };
+    }
+  }
+  return null;
+}
+
 // ── Per-stock backtest ──
 // Signal → store → wait for retest → entry at signal close
-// Exit: +N% target OR 2:55 PM EOD same day
+// Exit: +N% target OR -M% stoploss OR 2:55 PM EOD same day
 
 export const backtestStock = createServerFn({ method: "POST" })
-  .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "15m" | "30m" | "60m" | "1d"; targetPct?: number }) => input)
+  .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "15m" | "30m" | "60m" | "1d"; targetPct?: number; stopLossPct?: number }) => input)
   .handler(async ({ data }): Promise<{ entries: BacktestEntry[]; error?: string }> => {
     try {
       const { period1 } = dateRangeToDays(data.dateRange);
       const tf = data.timeframe || "1d";
+      const TARGET_PCT = (data.targetPct ?? 2) / 100;
+      const SL_PCT = (data.stopLossPct ?? 2) / 100;
 
       const tfConfig: Record<string, { maxDays: number; barsPerDay: number }> = {
         "15m": { maxDays: 55, barsPerDay: 26 },
@@ -153,7 +186,6 @@ export const backtestStock = createServerFn({ method: "POST" })
       const rangeStart = period1.getTime();
       const entries: BacktestEntry[] = [];
 
-      // Pending signal tracker
       let pending: {
         dir: "BUY" | "SELL";
         price: number;
@@ -172,30 +204,25 @@ export const backtestStock = createServerFn({ method: "POST" })
             const { date: rtDate, time: rtTime } = formatIST(bar.time);
             const displayTime = tf === "1d" ? "Intraday" : rtTime;
             const entryPrice = pending.price;
-            const TARGET_PCT = (data.targetPct ?? 2) / 100;
 
             // ── Calculate exit ──
-            let exitType: "TARGET" | "EOD" = "EOD";
-            let exitPrice = bar.close; // default: EOD close
+            let exitType: "TARGET" | "STOPLOSS" | "EOD" = "EOD";
+            let exitPrice = bar.close;
             let exitTime = displayTime;
             let holdingMinutes = 0;
 
             if (tf === "1d") {
-              // Daily bar: check if target was hit within the bar's range
-              if (pending.dir === "BUY" && bar.high >= entryPrice * (1 + TARGET_PCT)) {
-                exitType = "TARGET";
-                exitPrice = Math.round(entryPrice * (1 + TARGET_PCT) * 100) / 100;
-                exitTime = "Intraday";
-              } else if (pending.dir === "SELL" && bar.low <= entryPrice * (1 - TARGET_PCT)) {
-                exitType = "TARGET";
-                exitPrice = Math.round(entryPrice * (1 - TARGET_PCT) * 100) / 100;
+              // Daily bar: check target/stoploss within bar's range
+              const hit = checkExitOnBar(pending.dir, entryPrice, bar, TARGET_PCT, SL_PCT);
+              if (hit) {
+                exitType = hit.type;
+                exitPrice = hit.price;
                 exitTime = "Intraday";
               } else {
                 exitPrice = bar.close;
                 exitTime = "15:30";
               }
-              // Estimate holding: if target hit, ~half day; if EOD, full day
-              holdingMinutes = exitType === "TARGET" ? 180 : 375;
+              holdingMinutes = exitType !== "EOD" ? 180 : 375;
             } else {
               // Intraday TF: walk forward through same-day bars
               const entryMinutes = istMinutesFromTime(rtTime);
@@ -203,49 +230,34 @@ export const backtestStock = createServerFn({ method: "POST" })
               let found = false;
 
               // Check the retest bar itself first
-              if (pending.dir === "BUY" && bar.high >= entryPrice * (1 + TARGET_PCT)) {
-                exitType = "TARGET";
-                exitPrice = Math.round(entryPrice * (1 + TARGET_PCT) * 100) / 100;
-                exitTime = rtTime;
-                holdingMinutes = 0;
-                found = true;
-              } else if (pending.dir === "SELL" && bar.low <= entryPrice * (1 - TARGET_PCT)) {
-                exitType = "TARGET";
-                exitPrice = Math.round(entryPrice * (1 - TARGET_PCT) * 100) / 100;
+              const hitEntry = checkExitOnBar(pending.dir, entryPrice, bar, TARGET_PCT, SL_PCT);
+              if (hitEntry) {
+                exitType = hitEntry.type;
+                exitPrice = hitEntry.price;
                 exitTime = rtTime;
                 holdingMinutes = 0;
                 found = true;
               }
 
               if (!found) {
-                // Walk forward through subsequent bars on the same date
                 let lastBarOfDay = bar;
                 let lastBarTime = rtTime;
 
                 for (let k = i + 1; k < bars.length; k++) {
                   const fBar = bars[k];
                   const { date: fDate, time: fTime } = formatIST(fBar.time);
-                  if (fDate !== rtDateStr) break; // Different day → stop
+                  if (fDate !== rtDateStr) break;
 
                   const fMinutes = istMinutesFromTime(fTime);
 
-                  // Check target
-                  if (!found) {
-                    if (pending.dir === "BUY" && fBar.high >= entryPrice * (1 + TARGET_PCT)) {
-                      exitType = "TARGET";
-                      exitPrice = Math.round(entryPrice * (1 + TARGET_PCT) * 100) / 100;
-                      exitTime = fTime;
-                      holdingMinutes = fMinutes - entryMinutes;
-                      found = true;
-                      break;
-                    } else if (pending.dir === "SELL" && fBar.low <= entryPrice * (1 - TARGET_PCT)) {
-                      exitType = "TARGET";
-                      exitPrice = Math.round(entryPrice * (1 - TARGET_PCT) * 100) / 100;
-                      exitTime = fTime;
-                      holdingMinutes = fMinutes - entryMinutes;
-                      found = true;
-                      break;
-                    }
+                  const hitFwd = checkExitOnBar(pending.dir, entryPrice, fBar, TARGET_PCT, SL_PCT);
+                  if (hitFwd) {
+                    exitType = hitFwd.type;
+                    exitPrice = hitFwd.price;
+                    exitTime = fTime;
+                    holdingMinutes = fMinutes - entryMinutes;
+                    found = true;
+                    break;
                   }
 
                   lastBarOfDay = fBar;
@@ -253,7 +265,6 @@ export const backtestStock = createServerFn({ method: "POST" })
                 }
 
                 if (!found) {
-                  // EOD exit at last bar of the day (closest to 2:55 PM / 14:55)
                   exitType = "EOD";
                   exitPrice = lastBarOfDay.close;
                   exitTime = lastBarTime;
@@ -318,7 +329,6 @@ export const backtestStock = createServerFn({ method: "POST" })
   });
 
 // ── Aggregate: no-overlap, compile trades, compute summary ──
-// Zero API calls — all exits pre-calculated
 
 export const aggregateBacktest = createServerFn({ method: "POST" })
   .validator((input: { allEntries: BacktestEntry[]; dateRange: DateRange; totalScanned?: number }) => input)
@@ -326,21 +336,17 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
     const { allEntries, dateRange, totalScanned } = data;
     const { period1, period2 } = dateRangeToDays(dateRange);
 
-    // 1. Sort chronologically
     allEntries.sort((a, b) => `${a.retestDate} ${a.retestTime}`.localeCompare(`${b.retestDate} ${b.retestTime}`));
 
-    // 2. No-overlap per symbol
     const openUntil = new Map<string, string>();
     const filtered: BacktestEntry[] = [];
     for (const e of allEntries) {
       const lastExit = openUntil.get(e.symbol);
       if (lastExit && e.retestDate <= lastExit) continue;
       filtered.push(e);
-      // Same-day exit, so only block the entry date
       openUntil.set(e.symbol, e.retestDate);
     }
 
-    // 3. Build trades
     const trades: BacktestTrade[] = [];
     const symbolSet = new Set<string>();
 
@@ -363,7 +369,6 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
       });
     }
 
-    // 4. Compute summary
     const wins = trades.filter((t) => t.win).length;
     const losses = trades.length - wins;
     const returns = trades.map((t) => t.pnlPct);
@@ -373,7 +378,6 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
     const sumLosses = Math.abs(returns.filter((r) => r < 0).reduce((a, b) => a + b, 0));
     const profitFactor = sumLosses > 0 ? Math.round((sumWins / sumLosses) * 100) / 100 : sumWins > 0 ? Infinity : 0;
 
-    // Max drawdown
     let maxDrawdown = 0;
     let peak = 0;
     let cumulative = 0;
@@ -385,6 +389,7 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
     }
 
     const targetExits = trades.filter((t) => t.exitType === "TARGET").length;
+    const stoplossExits = trades.filter((t) => t.exitType === "STOPLOSS").length;
     const eodExits = trades.filter((t) => t.exitType === "EOD").length;
     const totalHolding = trades.reduce((a, t) => a + t.holdingMinutes, 0);
 
@@ -399,6 +404,7 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
       profitFactor,
       avgHoldingMinutes: trades.length > 0 ? Math.round(totalHolding / trades.length) : 0,
       targetExits,
+      stoplossExits,
       eodExits,
       maxGain: returns.length > 0 ? Math.round(Math.max(...returns) * 100) / 100 : 0,
       maxLoss: returns.length > 0 ? Math.round(Math.min(...returns) * 100) / 100 : 0,
