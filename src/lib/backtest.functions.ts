@@ -304,9 +304,9 @@ export const backtestStock = createServerFn({ method: "POST" })
         }
 
         // Check for new signal → replace pending
-        // Only consider signals after 12 PM IST (intraday TFs)
+        // Only BUY signals, only after 12 PM IST (intraday TFs)
         const newSig = signalAt.get(i);
-        if (newSig) {
+        if (newSig && newSig.dir === "BUY") {
           const { date, time } = formatIST(bar.time);
           if (tf !== "1d") {
             const hour = parseInt(time.slice(0, 2), 10);
