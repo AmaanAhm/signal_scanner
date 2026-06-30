@@ -1035,7 +1035,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
     <div>
       {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="section-title">Historical Backtest — BUY Retest Strategy</div>
+        <div className="section-title">Historical Backtest — Signal Retest Strategy</div>
         <label className="flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: "oklch(0.48 0.03 255)" }}>
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="accent-[oklch(0.50_0.16_200)]" />
           Backtest Mode
@@ -1051,7 +1051,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
       {enabled && (
         <>
           <p className="mt-0.5 mb-4 text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>
-            Replays historical daily data using the Lorentzian classifier. Tests BUY Retest entries with 1–5 day holds. Top 10 per day, no overlapping trades.
+            Replays historical data using the Lorentzian classifier. Stores BUY/SELL signal prices, waits for market retest, exits at daily close after 1–5 day holds.
           </p>
 
           {/* Date Range + Timeframe + Run */}
@@ -1148,6 +1148,10 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                         <span className="mono font-semibold text-right" style={{ color: s.avgReturn >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{s.avgReturn > 0 ? "+" : ""}{s.avgReturn}%</span>
                         <span style={{ color: "oklch(0.50 0.03 255)" }}>Total Return</span>
                         <span className="mono font-semibold text-right" style={{ color: s.totalReturn >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{s.totalReturn > 0 ? "+" : ""}{s.totalReturn}%</span>
+                        <span style={{ color: "oklch(0.50 0.03 255)" }}>Profit Factor</span>
+                        <span className="mono font-semibold text-right" style={{ color: s.profitFactor >= 1 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{s.profitFactor === Infinity ? "∞" : s.profitFactor}</span>
+                        <span style={{ color: "oklch(0.50 0.03 255)" }}>Max DD</span>
+                        <span className="mono font-semibold text-right text-loss">{s.maxDrawdown > 0 ? "-" : ""}{s.maxDrawdown}%</span>
                         <span style={{ color: "oklch(0.50 0.03 255)" }}>Max Gain</span>
                         <span className="mono font-semibold text-right text-profit">{s.maxGain > 0 ? "+" : ""}{s.maxGain}%</span>
                         <span style={{ color: "oklch(0.50 0.03 255)" }}>Max Loss</span>
@@ -1173,6 +1177,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                     <tr>
                       <th className="text-left">#</th>
                       <th className="text-left">Symbol</th>
+                      <th className="text-center">Dir</th>
                       <th className="text-left">Company</th>
                       <th className="text-left">Entry Date</th>
                       <th className="text-left">Entry Time</th>
@@ -1185,13 +1190,20 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTrades.length === 0 ? (
-                      <tr><td colSpan={11} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No trades for this holding period.</td></tr>
+                      filteredTrades.length === 0 ? (
+                      <tr><td colSpan={12} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No trades for this holding period.</td></tr>
                     ) : (
                       filteredTrades.map((t, i) => (
                         <tr key={`${t.symbol}-${t.entryDate}-${i}`}>
                           <td className="mono text-xs" style={{ color: "oklch(0.50 0.03 255)" }}>{i + 1}</td>
                           <td className="font-semibold" style={{ color: "oklch(0.30 0.04 260)" }}>{t.symbol.replace(".NS", "")}</td>
+                          <td className="text-center">
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3,
+                              background: t.direction === "BUY" ? "oklch(0.92 0.08 150)" : "oklch(0.92 0.08 25)",
+                              color: t.direction === "BUY" ? "oklch(0.30 0.15 150)" : "oklch(0.40 0.20 25)",
+                            }}>{t.direction}</span>
+                          </td>
                           <td className="text-xs" style={{ color: "oklch(0.45 0.02 255)" }}>{t.name}</td>
                           <td className="mono text-xs">{t.entryDate}</td>
                           <td className="mono text-xs">{t.entryTime}</td>
