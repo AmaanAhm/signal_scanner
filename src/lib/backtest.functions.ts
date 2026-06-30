@@ -158,9 +158,9 @@ export const backtestStock = createServerFn({ method: "POST" })
 // ── Aggregate backtest results: top-10, no-overlap, exit prices ──
 
 export const aggregateBacktest = createServerFn({ method: "POST" })
-  .validator((input: { allEntries: BacktestEntry[]; dateRange: DateRange }) => input)
+  .validator((input: { allEntries: BacktestEntry[]; dateRange: DateRange; totalScanned?: number }) => input)
   .handler(async ({ data }): Promise<BacktestResult> => {
-    const { allEntries, dateRange } = data;
+    const { allEntries, dateRange, totalScanned } = data;
     const { period1, period2 } = dateRangeToDays(dateRange);
 
     // 1. Sort chronologically by retest date+time
@@ -291,7 +291,7 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
     return {
       trades,
       summaries,
-      totalStocksProcessed: symbolSet.size,
+      totalStocksProcessed: totalScanned ?? symbolSet.size,
       totalStocksWithSignals: new Set(trades.map((t) => t.symbol)).size,
       dateRangeUsed: { start: period1.toISOString().slice(0, 10), end: period2.toISOString().slice(0, 10) },
     };

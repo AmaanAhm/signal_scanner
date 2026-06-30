@@ -927,6 +927,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
     const allEntries: Array<{ symbol: string; name: string; signalDate: string; signalTime: string; signalPrice: number; retestDate: string; retestTime: string; retestPrice: number }> = [];
     const queue = [...list];
     let done = 0;
+    let errCount = 0;
 
     async function worker() {
       while (queue.length > 0) {
@@ -935,11 +936,12 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
         try {
           const res = await runStock({ data: { symbol: item.symbol, name: item.name, dateRange: effectiveDateRange, timeframe: btTimeframe } }) as any;
           if (res.entries?.length > 0) allEntries.push(...res.entries);
-        } catch { /* skip */ }
+          if (res.error) errCount++;
+        } catch { errCount++; }
         finally {
           done++;
-          if (done % 3 === 0 || done === list.length) {
-            setProgress({ done, total: list.length, phase: `Scanning stocks… (${done}/${list.length})` });
+          if (done % 5 === 0 || done === list.length) {
+            setProgress({ done, total: list.length, phase: `Scanning… ${done}/${list.length} — ${allEntries.length} entries found` });
           }
         }
       }
@@ -947,17 +949,23 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
 
     await Promise.all(Array.from({ length: BT_CONCURRENCY }, () => worker()));
 
+    if (allEntries.length === 0) {
+      setProgress({ done: list.length, total: list.length, phase: `Scan complete. 0 BUY retest entries found across ${list.length} stocks (${errCount} errors). Try a longer date range or daily timeframe.` });
+      setRunning(false);
+      return;
+    }
+
     // Phase 2: Aggregate
-    setProgress({ done: list.length, total: list.length, phase: "Aggregating results…" });
+    setProgress({ done: list.length, total: list.length, phase: `Found ${allEntries.length} entries. Aggregating…` });
     try {
-      const res = await runAggregate({ data: { allEntries, dateRange: effectiveDateRange } }) as BacktestResult;
+      const res = await runAggregate({ data: { allEntries, dateRange: effectiveDateRange, totalScanned: list.length } }) as BacktestResult;
       setResult(res);
     } catch (e: any) {
       setProgress({ done: 0, total: 0, phase: `Error: ${e.message}` });
     } finally {
       setRunning(false);
     }
-  }, [effectiveDateRange, runStock, runAggregate]);
+  }, [effectiveDateRange, btTimeframe, runStock, runAggregate]);
 
   // Best holding period
   const bestHold = result?.summaries.reduce((best, s) => (s.avgReturn > best.avgReturn ? s : best), result.summaries[0]);
@@ -1081,7 +1089,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
           {/* Empty state */}
           {!running && !result && (
             <div className="py-8 text-center text-sm" style={{ color: "oklch(0.50 0.03 255)" }}>
-              Select a date range and click "Run Backtest".
+              {progress.phase || 'Select a date range and click "Run Backtest".'}
             </div>
           )}
 
