@@ -906,7 +906,14 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const loadSaved = () => {
     try {
       const raw = typeof window !== "undefined" ? localStorage.getItem("bt_state") : null;
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Invalidate stale results from old schema (summaries[] → summary{})
+        if (parsed?.result && !parsed.result.summary) {
+          parsed.result = null;
+        }
+        return parsed;
+      }
     } catch { /* ignore */ }
     return null;
   };
