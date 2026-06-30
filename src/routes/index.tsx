@@ -1013,8 +1013,8 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
       `Total Return,${s.totalReturn}%`,
       `Profit Factor,${s.profitFactor}`,
       `Max Drawdown,${s.maxDrawdown}%`,
-      `Target Exits (+2%),${s.targetExits}`,
-      `EOD Exits (2:55 PM),${s.eodExits}`,
+      `Target Exits,${s.targetExits}`,
+      `Stoploss Exits,${s.stoplossExits}`,
       `Avg Holding (min),${s.avgHoldingMinutes}`,
     ];
     const csv = [header, ...rows, ...summaryRows].join("\n");
@@ -1048,7 +1048,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
       {enabled && (
         <>
           <p className="mt-0.5 mb-4 text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>
-            Entry on first retest of signal price. Exit at <strong>+{targetPct}% profit</strong>, <strong>-{stopLossPct}% stop loss</strong>, or <strong>2:55 PM</strong> same day.
+            Entry on first retest of signal price. Exit at <strong>+{targetPct}% profit</strong> or <strong>-{stopLossPct}% stop loss</strong>.
           </p>
 
           {/* Date Range + Timeframe + Run */}
@@ -1177,8 +1177,6 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                     <span className="mono font-semibold text-right text-profit">{result.summary.targetExits}</span>
                     <span style={{ color: "oklch(0.50 0.03 255)" }}>-{stopLossPct}% SL</span>
                     <span className="mono font-semibold text-right text-loss">{result.summary.stoplossExits}</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>2:55 PM EOD</span>
-                    <span className="mono font-semibold text-right" style={{ color: "oklch(0.55 0.15 40)" }}>{result.summary.eodExits}</span>
                     <span style={{ color: "oklch(0.50 0.03 255)" }}>Avg Hold</span>
                     <span className="mono font-semibold text-right" style={{ color: "oklch(0.35 0.03 260)" }}>{result.summary.avgHoldingMinutes} min</span>
                   </div>
@@ -1235,7 +1233,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                               fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3,
                               background: t.exitType === "TARGET" ? "oklch(0.90 0.10 200)" : t.exitType === "STOPLOSS" ? "oklch(0.93 0.08 25)" : "oklch(0.92 0.06 60)",
                               color: t.exitType === "TARGET" ? "oklch(0.25 0.14 200)" : t.exitType === "STOPLOSS" ? "oklch(0.40 0.20 25)" : "oklch(0.40 0.10 60)",
-                            }}>{t.exitType === "TARGET" ? `+${targetPct}%` : t.exitType === "STOPLOSS" ? `-${stopLossPct}%` : "2:55PM"}</span>
+                            }}>{t.exitType === "TARGET" ? `+${targetPct}%` : `-${stopLossPct}%`}</span>
                           </td>
                           <td className="mono text-xs">{t.exitTime}</td>
                           <td className="mono text-right">{t.exitPrice.toFixed(2)}</td>

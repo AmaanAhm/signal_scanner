@@ -19,7 +19,7 @@ interface BacktestEntry {
   retestDate: string;
   retestTime: string;
   retestPrice: number;
-  exitType: "TARGET" | "STOPLOSS" | "EOD";
+  exitType: "TARGET" | "STOPLOSS";
   exitPrice: number;
   exitTime: string;
   pnl: number;
@@ -35,7 +35,7 @@ export interface BacktestTrade {
   entryDate: string;
   entryTime: string;
   entryPrice: number;
-  exitType: "TARGET" | "STOPLOSS" | "EOD";
+  exitType: "TARGET" | "STOPLOSS";
   exitPrice: number;
   exitTime: string;
   pnl: number;
@@ -56,7 +56,6 @@ export interface BacktestSummary {
   avgHoldingMinutes: number;
   targetExits: number;
   stoplossExits: number;
-  eodExits: number;
   maxGain: number;
   maxLoss: number;
 }
@@ -205,72 +204,59 @@ export const backtestStock = createServerFn({ method: "POST" })
             const displayTime = tf === "1d" ? "Intraday" : rtTime;
             const entryPrice = pending.price;
 
-            // ── Calculate exit ──
-            let exitType: "TARGET" | "STOPLOSS" | "EOD" = "EOD";
+            // ── Calculate exit: walk forward until target or stoploss ──
+            let exitType: "TARGET" | "STOPLOSS" = "STOPLOSS";
             let exitPrice = bar.close;
             let exitTime = displayTime;
+            let exitDate = rtDate;
             let holdingMinutes = 0;
 
-            if (tf === "1d") {
-              // Daily bar: check target/stoploss within bar's range
-              const hit = checkExitOnBar(pending.dir, entryPrice, bar, TARGET_PCT, SL_PCT);
-              if (hit) {
-                exitType = hit.type;
-                exitPrice = hit.price;
-                exitTime = "Intraday";
-              } else {
-                exitPrice = bar.close;
-                exitTime = "15:30";
-              }
-              holdingMinutes = exitType !== "EOD" ? 180 : 375;
-            } else {
-              // Intraday TF: walk forward through same-day bars
-              const entryMinutes = istMinutesFromTime(rtTime);
-              const rtDateStr = rtDate;
-              let found = false;
+            const entryMinutes = tf !== "1d" ? istMinutesFromTime(rtTime) : 0;
 
-              // Check the retest bar itself first
-              const hitEntry = checkExitOnBar(pending.dir, entryPrice, bar, TARGET_PCT, SL_PCT);
-              if (hitEntry) {
-                exitType = hitEntry.type;
-                exitPrice = hitEntry.price;
-                exitTime = rtTime;
-                holdingMinutes = 0;
-                found = true;
+            // Check the retest bar itself first
+            const hitEntry = checkExitOnBar(pending.dir, entryPrice, bar, TARGET_PCT, SL_PCT);
+            if (hitEntry) {
+              exitType = hitEntry.type;
+              exitPrice = hitEntry.price;
+              exitTime = displayTime;
+              exitDate = rtDate;
+              holdingMinutes = 0;
+            } else {
+              // Walk forward through ALL subsequent bars (no day limit)
+              let found = false;
+              for (let k = i + 1; k < bars.length; k++) {
+                const fBar = bars[k];
+                const { date: fDate, time: fTime } = formatIST(fBar.time);
+
+                const hitFwd = checkExitOnBar(pending.dir, entryPrice, fBar, TARGET_PCT, SL_PCT);
+                if (hitFwd) {
+                  exitType = hitFwd.type;
+                  exitPrice = hitFwd.price;
+                  exitTime = tf === "1d" ? "Intraday" : fTime;
+                  exitDate = fDate;
+                  if (tf !== "1d") {
+                    // Calculate holding in minutes across days
+                    const totalMins = Math.round((fBar.time - bar.time) / 60000);
+                    holdingMinutes = totalMins;
+                  } else {
+                    // Days held
+                    holdingMinutes = Math.round((fBar.time - bar.time) / 86400000) * 375;
+                  }
+                  found = true;
+                  break;
+                }
               }
 
               if (!found) {
-                let lastBarOfDay = bar;
-                let lastBarTime = rtTime;
-
-                for (let k = i + 1; k < bars.length; k++) {
-                  const fBar = bars[k];
-                  const { date: fDate, time: fTime } = formatIST(fBar.time);
-                  if (fDate !== rtDateStr) break;
-
-                  const fMinutes = istMinutesFromTime(fTime);
-
-                  const hitFwd = checkExitOnBar(pending.dir, entryPrice, fBar, TARGET_PCT, SL_PCT);
-                  if (hitFwd) {
-                    exitType = hitFwd.type;
-                    exitPrice = hitFwd.price;
-                    exitTime = fTime;
-                    holdingMinutes = fMinutes - entryMinutes;
-                    found = true;
-                    break;
-                  }
-
-                  lastBarOfDay = fBar;
-                  lastBarTime = fTime;
-                }
-
-                if (!found) {
-                  exitType = "EOD";
-                  exitPrice = lastBarOfDay.close;
-                  exitTime = lastBarTime;
-                  holdingMinutes = istMinutesFromTime(lastBarTime) - entryMinutes;
-                  if (holdingMinutes < 0) holdingMinutes = 0;
-                }
+                // Never hit — close at last bar (edge case: end of data)
+                const lastBar = bars[bars.length - 1];
+                const { date: lDate, time: lTime } = formatIST(lastBar.time);
+                exitPrice = lastBar.close;
+                exitTime = tf === "1d" ? "15:30" : lTime;
+                exitDate = lDate;
+                const pnlCheck = pending.dir === "BUY" ? exitPrice - entryPrice : entryPrice - exitPrice;
+                exitType = pnlCheck >= 0 ? "TARGET" : "STOPLOSS";
+                holdingMinutes = Math.round((lastBar.time - bar.time) / 60000);
               }
             }
 
@@ -390,7 +376,7 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
 
     const targetExits = trades.filter((t) => t.exitType === "TARGET").length;
     const stoplossExits = trades.filter((t) => t.exitType === "STOPLOSS").length;
-    const eodExits = trades.filter((t) => t.exitType === "EOD").length;
+
     const totalHolding = trades.reduce((a, t) => a + t.holdingMinutes, 0);
 
     const summary: BacktestSummary = {
@@ -405,7 +391,7 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
       avgHoldingMinutes: trades.length > 0 ? Math.round(totalHolding / trades.length) : 0,
       targetExits,
       stoplossExits,
-      eodExits,
+
       maxGain: returns.length > 0 ? Math.round(Math.max(...returns) * 100) / 100 : 0,
       maxLoss: returns.length > 0 ? Math.round(Math.min(...returns) * 100) / 100 : 0,
     };
