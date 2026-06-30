@@ -903,15 +903,35 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const runStock = useServerFn(backtestStock);
   const runAggregate = useServerFn(aggregateBacktest);
 
-  const [enabled, setEnabled] = useState(false);
-  const [dateRangeKey, setDateRangeKey] = useState("1y");
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd, setCustomEnd] = useState("");
-  const [btTimeframe, setBtTimeframe] = useState<"15m" | "30m" | "60m" | "1d">("1d");
-  const [result, setResult] = useState<BacktestResult | null>(null);
+  // Load persisted state from localStorage
+  const loadSaved = () => {
+    try {
+      const raw = typeof window !== "undefined" ? localStorage.getItem("bt_state") : null;
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return null;
+  };
+  const saved = useRef(loadSaved());
+
+  const [enabled, setEnabled] = useState(saved.current?.enabled ?? false);
+  const [dateRangeKey, setDateRangeKey] = useState(saved.current?.dateRangeKey ?? "1y");
+  const [customStart, setCustomStart] = useState(saved.current?.customStart ?? "");
+  const [customEnd, setCustomEnd] = useState(saved.current?.customEnd ?? "");
+  const [btTimeframe, setBtTimeframe] = useState<"15m" | "30m" | "60m" | "1d">(saved.current?.btTimeframe ?? "1d");
+  const [result, setResult] = useState<BacktestResult | null>(saved.current?.result ?? null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, phase: "" });
-  const [selectedHold, setSelectedHold] = useState(3);
+  const [selectedHold, setSelectedHold] = useState(saved.current?.selectedHold ?? 3);
+
+  // Persist state to localStorage on change
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem("bt_state", JSON.stringify({
+        enabled, dateRangeKey, customStart, customEnd, btTimeframe, result, selectedHold,
+      }));
+    } catch { /* quota exceeded — skip */ }
+  }, [enabled, dateRangeKey, customStart, customEnd, btTimeframe, result, selectedHold]);
 
   const effectiveDateRange: DateRange = dateRangeKey === "custom"
     ? { start: customStart, end: customEnd }
