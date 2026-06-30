@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getSupabase } from "./db";
+import { dbSelect, dbInsert, dbUpsert, dbUpdate, dbDelete } from "./db";
 
 // ── Scan Results ──
 
@@ -19,27 +19,19 @@ interface ScanResultDoc {
 export const saveScanResults = createServerFn({ method: "POST" })
   .validator((input: { timeframe: string; results: ScanResultDoc[] }) => input)
   .handler(async ({ data }) => {
-    const sb = getSupabase();
-    const { error } = await sb
-      .from("scan_results")
-      .upsert(
-        { timeframe: data.timeframe, results: data.results, updated_at: new Date().toISOString() },
-        { onConflict: "timeframe" },
-      );
-    if (error) console.error("saveScanResults:", error.message);
+    await dbUpsert("scan_results", {
+      timeframe: data.timeframe,
+      results: data.results,
+      updated_at: new Date().toISOString(),
+    }, "timeframe");
     return { ok: true };
   });
 
 export const loadScanResults = createServerFn({ method: "POST" })
   .validator((input: { timeframe: string }) => input)
   .handler(async ({ data }) => {
-    const sb = getSupabase();
-    const { data: row, error } = await sb
-      .from("scan_results")
-      .select("results, updated_at")
-      .eq("timeframe", data.timeframe)
-      .maybeSingle();
-    if (error) console.error("loadScanResults:", error.message);
+    const rows = await dbSelect("scan_results", `timeframe=eq.${data.timeframe}&select=results,updated_at`);
+    const row = rows[0];
     // Migrate old docs: retest (singular) → retests (array)
     const results = ((row?.results as any[]) ?? []).map((r: any) => {
       if (!r.retests && r.retest) {
@@ -55,24 +47,8 @@ export const loadScanResults = createServerFn({ method: "POST" })
 
 // ── Paper Trades ──
 
-interface PaperTradeDoc {
-  trade_id: string;
-  symbol: string;
-  name: string;
-  side: "BUY" | "SELL";
-  entry_price: number;
-  entry_date: string;
-  holding_days: number;
-  exit_price: number | null;
-  exit_date: string | null;
-  current_price: number | null;
-  status: "Open" | "Closed";
-  day_pnl: (number | null)[];
-  created_at: string;
-}
-
 // Helper: convert camelCase trade from frontend → snake_case for Supabase
-function toDb(t: any): Partial<PaperTradeDoc> {
+function toDb(t: any) {
   return {
     trade_id: t.tradeId,
     symbol: t.symbol,
@@ -111,70 +87,54 @@ function fromDb(row: any) {
 export const savePaperTrade = createServerFn({ method: "POST" })
   .validator((input: any) => input)
   .handler(async ({ data }) => {
-    const sb = getSupabase();
-    const { error } = await sb.from("paper_trades").insert(toDb(data));
-    if (error) console.error("savePaperTrade:", error.message);
+    await dbInsert("paper_trades", toDb(data));
     return { ok: true };
   });
 
 export const updatePaperTrade = createServerFn({ method: "POST" })
   .validator((input: { tradeId: string; updates: any }) => input)
   .handler(async ({ data }) => {
-    const sb = getSupabase();
     const updates: any = {};
     if (data.updates.exitPrice !== undefined) updates.exit_price = data.updates.exitPrice;
     if (data.updates.exitDate !== undefined) updates.exit_date = data.updates.exitDate;
     if (data.updates.status !== undefined) updates.status = data.updates.status;
     if (data.updates.currentPrice !== undefined) updates.current_price = data.updates.currentPrice;
     if (data.updates.dayPnl !== undefined) updates.day_pnl = data.updates.dayPnl;
-    const { error } = await sb.from("paper_trades").update(updates).eq("trade_id", data.tradeId);
-    if (error) console.error("updatePaperTrade:", error.message);
+    await dbUpdate("paper_trades", `trade_id=eq.${data.tradeId}`, updates);
     return { ok: true };
   });
 
 export const deletePaperTrade = createServerFn({ method: "POST" })
   .validator((input: { tradeId: string }) => input)
   .handler(async ({ data }) => {
-    const sb = getSupabase();
-    const { error } = await sb.from("paper_trades").delete().eq("trade_id", data.tradeId);
-    if (error) console.error("deletePaperTrade:", error.message);
+    await dbDelete("paper_trades", `trade_id=eq.${data.tradeId}`);
     return { ok: true };
   });
 
 export const loadPaperTrades = createServerFn({ method: "POST" })
   .validator((input: Record<string, never>) => input)
   .handler(async () => {
-    const sb = getSupabase();
-    const { data: rows, error } = await sb
-      .from("paper_trades")
-      .select("*")
-      .order("status", { ascending: true })
-      .order("created_at", { ascending: false });
-    if (error) console.error("loadPaperTrades:", error.message);
-    return (rows ?? []).map(fromDb);
+    const rows = await dbSelect("paper_trades", "select=*&order=status.asc,created_at.desc");
+    return rows.map(fromDb);
   });
 
 export const clearPaperTradeHistory = createServerFn({ method: "POST" })
   .validator((input: Record<string, never>) => input)
   .handler(async () => {
-    const sb = getSupabase();
-    const { error } = await sb.from("paper_trades").delete().eq("status", "Closed");
-    if (error) console.error("clearPaperTradeHistory:", error.message);
+    await dbDelete("paper_trades", "status=eq.Closed");
     return { ok: true };
   });
 
 export const batchUpdatePaperTrades = createServerFn({ method: "POST" })
   .validator((input: { updates: Array<{ tradeId: string; currentPrice: number | null; status?: "Open" | "Closed"; exitPrice?: number | null; exitDate?: string | null }> }) => input)
   .handler(async ({ data }) => {
-    const sb = getSupabase();
-    // Supabase doesn't have bulkWrite, so batch with Promise.all
     await Promise.all(
       data.updates.map((u) => {
         const updates: any = { current_price: u.currentPrice };
         if (u.status) updates.status = u.status;
         if (u.exitPrice !== undefined) updates.exit_price = u.exitPrice;
         if (u.exitDate !== undefined) updates.exit_date = u.exitDate;
-        return sb.from("paper_trades").update(updates).eq("trade_id", u.tradeId);
+        return dbUpdate("paper_trades", `trade_id=eq.${u.tradeId}`, updates);
       }),
     );
     return { ok: true };
