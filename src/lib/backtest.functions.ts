@@ -130,6 +130,18 @@ export const backtestStock = createServerFn({ method: "POST" })
       // Retest window: ~5 trading days worth of bars (for intraday that's many bars)
       const retestWindow = Math.max(20, barsPerDay * 5);
 
+      // For intraday TFs, only consider signals after 12:00 PM IST (skip morning volatility)
+      const isIntraday = tf !== "1d";
+      const noonMinutes = 12 * 60; // 12:00 PM
+
+      function isAfterNoon(epochMs: number): boolean {
+        if (!isIntraday) return true; // daily bars — no time filter
+        const { time } = formatIST(epochMs);
+        const h = parseInt(time.slice(0, 2), 10);
+        const m = parseInt(time.slice(3, 5), 10);
+        return h * 60 + m >= noonMinutes;
+      }
+
       // Find all BUY signals within the date range
       for (let si = 0; si < lorentzResult.signals.length; si++) {
         const sig = lorentzResult.signals[si];
@@ -137,12 +149,17 @@ export const backtestStock = createServerFn({ method: "POST" })
         if (bars[sig.index].time < rangeStart) continue;
 
         const signalBar = bars[sig.index];
+
+        // Skip signals before 12 PM IST for intraday
+        if (!isAfterNoon(signalBar.time)) continue;
+
         const retestLevel = signalBar.high; // BUY → retest at signal candle's HIGH
         const { date: sigDate, time: sigTime } = formatIST(signalBar.time);
 
-        // Look forward for retests within the window
+        // Look forward for retests within the window (also after 12 PM for intraday)
         for (let j = sig.index + 1; j < bars.length && j <= sig.index + retestWindow; j++) {
           const bar = bars[j];
+          if (isIntraday && !isAfterNoon(bar.time)) continue; // skip morning retest bars
           const touching = bar.low <= retestLevel && bar.high >= retestLevel;
           if (touching) {
             const { date: rtDate, time: rtTime } = formatIST(bar.time);
