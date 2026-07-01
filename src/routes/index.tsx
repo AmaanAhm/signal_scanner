@@ -998,9 +998,9 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
 
   const exportCSV = useCallback(() => {
     if (!sortedTrades.length || !result) return;
-    const header = "#,Symbol,Dir,Company,Entry Date,Entry Time,Entry ₹,Exit Type,Exit Time,Exit ₹,P&L (₹),P&L (%),Result";
+    const header = "#,Symbol,Company,Signal Date,Signal Time,Signal ₹,Entry Date,Entry Time,Entry ₹,Exit Type,Exit Date,Exit Time,Exit ₹,P&L (₹),P&L (%),Hold(min),Result";
     const rows = sortedTrades.map((t, i) =>
-      `${i + 1},${t.symbol.replace(".NS", "")},${t.direction},"${t.name}",${t.entryDate},${t.entryTime},${t.entryPrice.toFixed(2)},${t.exitType},${t.exitTime},${t.exitPrice.toFixed(2)},${t.pnl.toFixed(2)},${t.pnlPct}%,${t.win ? "WIN" : "LOSS"}`
+      `${i + 1},${t.symbol.replace(".NS", "")},"${t.name}",${t.signalDate},${t.signalTime},${t.signalPrice.toFixed(2)},${t.entryDate},${t.entryTime},${t.entryPrice.toFixed(2)},${t.exitType},${t.exitDate},${t.exitTime},${t.exitPrice.toFixed(2)},${t.pnl.toFixed(2)},${t.pnlPct}%,${t.holdingMinutes},${t.win ? "WIN" : "LOSS"}`
     );
     const s = result.summary;
     const summaryRows = [
@@ -1048,7 +1048,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
       {enabled && (
         <>
           <p className="mt-0.5 mb-4 text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>
-            Entry on first retest of signal price. Exit at <strong>+{targetPct}% profit</strong> or <strong>-{stopLossPct}% stop loss</strong>.
+            Entry on first retest of signal price. Exit at <strong>+{targetPct}% profit</strong> or <strong>-{stopLossPct}% stop loss</strong>. Timeframe used only for signal generation.
           </p>
 
           {/* Date Range + Timeframe + Run */}
@@ -1196,45 +1196,46 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                     <tr>
                       <th className="text-left">#</th>
                       <th className="text-left">Symbol</th>
-                      <th className="text-center">Dir</th>
                       <th className="text-left">Company</th>
+                      <th className="text-left">Signal Date</th>
+                      <th className="text-left">Signal Time</th>
+                      <th className="text-right">Signal ₹</th>
                       <th className="text-left">Entry Date</th>
                       <th className="text-left">Entry Time</th>
                       <th className="text-right">Entry ₹</th>
                       <th className="text-center">Exit Type</th>
+                      <th className="text-left">Exit Date</th>
                       <th className="text-left">Exit Time</th>
                       <th className="text-right">Exit ₹</th>
                       <th className="text-right">P&L ₹</th>
                       <th className="text-right">P&L %</th>
+                      <th className="text-right">Hold</th>
                       <th className="text-center">Result</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sortedTrades.length === 0 ? (
-                      <tr><td colSpan={13} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No trades found.</td></tr>
+                      <tr><td colSpan={17} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No trades found.</td></tr>
                     ) : (
                       sortedTrades.map((t, i) => (
                         <tr key={`${t.symbol}-${t.entryDate}-${i}`}>
                           <td className="mono text-xs" style={{ color: "oklch(0.50 0.03 255)" }}>{i + 1}</td>
                           <td className="font-semibold" style={{ color: "oklch(0.30 0.04 260)" }}>{t.symbol.replace(".NS", "")}</td>
-                          <td className="text-center">
-                            <span style={{
-                              fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3,
-                              background: t.direction === "BUY" ? "oklch(0.92 0.08 150)" : "oklch(0.92 0.08 25)",
-                              color: t.direction === "BUY" ? "oklch(0.30 0.15 150)" : "oklch(0.40 0.20 25)",
-                            }}>{t.direction}</span>
-                          </td>
                           <td className="text-xs" style={{ color: "oklch(0.45 0.02 255)" }}>{t.name}</td>
+                          <td className="mono text-xs">{t.signalDate}</td>
+                          <td className="mono text-xs">{t.signalTime}</td>
+                          <td className="mono text-right">{t.signalPrice.toFixed(2)}</td>
                           <td className="mono text-xs">{t.entryDate}</td>
                           <td className="mono text-xs">{t.entryTime}</td>
                           <td className="mono text-right">{t.entryPrice.toFixed(2)}</td>
                           <td className="text-center">
                             <span style={{
                               fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3,
-                              background: t.exitType === "TARGET" ? "oklch(0.90 0.10 200)" : t.exitType === "STOPLOSS" ? "oklch(0.93 0.08 25)" : "oklch(0.92 0.06 60)",
-                              color: t.exitType === "TARGET" ? "oklch(0.25 0.14 200)" : t.exitType === "STOPLOSS" ? "oklch(0.40 0.20 25)" : "oklch(0.40 0.10 60)",
+                              background: t.exitType === "TARGET" ? "oklch(0.90 0.10 200)" : "oklch(0.93 0.08 25)",
+                              color: t.exitType === "TARGET" ? "oklch(0.25 0.14 200)" : "oklch(0.40 0.20 25)",
                             }}>{t.exitType === "TARGET" ? `+${targetPct}%` : `-${stopLossPct}%`}</span>
                           </td>
+                          <td className="mono text-xs">{t.exitDate}</td>
                           <td className="mono text-xs">{t.exitTime}</td>
                           <td className="mono text-right">{t.exitPrice.toFixed(2)}</td>
                           <td className="mono text-right font-semibold" style={{ color: t.pnl >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>
@@ -1243,6 +1244,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                           <td className="mono text-right font-semibold" style={{ color: t.pnlPct >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>
                             {t.pnlPct >= 0 ? "+" : ""}{t.pnlPct}%
                           </td>
+                          <td className="mono text-right text-xs">{t.holdingMinutes}m</td>
                           <td className="text-center">
                             <span style={{
                               fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
