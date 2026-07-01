@@ -12,7 +12,7 @@ export type DateRange = "6m" | "1y" | "2y" | "3y" | "4y" | { start: string; end:
 interface BacktestEntry {
   symbol: string;
   name: string;
-  direction: "BUY";
+  direction: "BUY" | "SELL";
   signalDate: string;
   signalTime: string;
   signalPrice: number;
@@ -21,7 +21,6 @@ interface BacktestEntry {
   retestPrice: number;
   exitType: "TARGET" | "STOPLOSS";
   exitPrice: number;
-  exitDate: string;
   exitTime: string;
   pnl: number;
   pnlPct: number;
@@ -32,16 +31,12 @@ interface BacktestEntry {
 export interface BacktestTrade {
   symbol: string;
   name: string;
-  direction: "BUY";
-  signalDate: string;
-  signalTime: string;
-  signalPrice: number;
+  direction: "BUY" | "SELL";
   entryDate: string;
   entryTime: string;
   entryPrice: number;
   exitType: "TARGET" | "STOPLOSS";
   exitPrice: number;
-  exitDate: string;
   exitTime: string;
   pnl: number;
   pnlPct: number;
@@ -96,227 +91,194 @@ function formatIST(epochMs: number): { date: string; time: string } {
   return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}:${get("second")}` };
 }
 
+function istMinutesFromTime(time: string): number {
+  const h = parseInt(time.slice(0, 2), 10);
+  const m = parseInt(time.slice(3, 5), 10);
+  return h * 60 + m;
+}
+
 // Helper: check if target or stoploss was hit on a bar
 function checkExitOnBar(
+  dir: "BUY" | "SELL",
   entryPrice: number,
   bar: { high: number; low: number },
   targetPct: number,
   slPct: number,
 ): { type: "TARGET" | "STOPLOSS"; price: number } | null {
-  // BUY only: target = price UP, stoploss = price DOWN
-  // Check stoploss first (conservative — assume worst case)
-  if (bar.low <= entryPrice * (1 - slPct)) {
-    return { type: "STOPLOSS", price: Math.round(entryPrice * (1 - slPct) * 100) / 100 };
-  }
-  if (bar.high >= entryPrice * (1 + targetPct)) {
-    return { type: "TARGET", price: Math.round(entryPrice * (1 + targetPct) * 100) / 100 };
+  // For BUY: target = price goes UP, stoploss = price goes DOWN
+  // For SELL: target = price goes DOWN, stoploss = price goes UP
+  if (dir === "BUY") {
+    // Check stoploss first (more conservative — assume worst case hits first)
+    if (bar.low <= entryPrice * (1 - slPct)) {
+      return { type: "STOPLOSS", price: Math.round(entryPrice * (1 - slPct) * 100) / 100 };
+    }
+    if (bar.high >= entryPrice * (1 + targetPct)) {
+      return { type: "TARGET", price: Math.round(entryPrice * (1 + targetPct) * 100) / 100 };
+    }
+  } else {
+    // SELL (short): stoploss = price goes UP, target = price goes DOWN
+    if (bar.high >= entryPrice * (1 + slPct)) {
+      return { type: "STOPLOSS", price: Math.round(entryPrice * (1 + slPct) * 100) / 100 };
+    }
+    if (bar.low <= entryPrice * (1 - targetPct)) {
+      return { type: "TARGET", price: Math.round(entryPrice * (1 - targetPct) * 100) / 100 };
+    }
   }
   return null;
 }
 
-// Fetch bars from Yahoo Finance
-async function fetchBars(symbol: string, tf: string, fetchStart: Date): Promise<Bar[]> {
-  const result = await yf.chart(symbol, {
-    period1: fetchStart,
-    interval: tf as any,
-  }, { validateResult: false }) as any;
-
-  const bars: Bar[] = [];
-  for (const q of result.quotes) {
-    if (q.open == null || q.high == null || q.low == null || q.close == null) continue;
-    const time = q.date instanceof Date ? q.date.getTime() : new Date(q.date as string).getTime();
-    bars.push({ open: q.open, high: q.high, low: q.low, close: q.close, volume: q.volume ?? 0, time });
-  }
-  return bars;
-}
-
-// Determine finest available timeframe for a given period
-function finestAvailableTf(periodDays: number): "15m" | "30m" | "60m" | "1d" {
-  if (periodDays <= 55) return "15m";
-  if (periodDays <= 700) return "60m";
-  return "1d";
-}
-
-// TF ordering for comparison (lower = finer)
-const TF_ORDER: Record<string, number> = { "15m": 1, "30m": 2, "60m": 3, "1d": 4 };
-
 // ── Per-stock backtest ──
-// Phase 1: Selected TF → Lorentzian → BUY signals (with timestamps)
-// Phase 2: Finest available TF → price-based retest + target/SL exit
+// Selected TF generates BUY signal → store signal price → wait for first
+// future price retest (pure price touch, no candle/TF comparison) → entry
+// at signal price → exit on +N% target or -M% stoploss (no EOD exit)
 
 export const backtestStock = createServerFn({ method: "POST" })
   .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "15m" | "30m" | "60m" | "1d"; targetPct?: number; stopLossPct?: number }) => input)
   .handler(async ({ data }): Promise<{ entries: BacktestEntry[]; error?: string }> => {
     try {
       const { period1 } = dateRangeToDays(data.dateRange);
-      const signalTf = data.timeframe || "1d";
+      const tf = data.timeframe || "1d";
       const TARGET_PCT = (data.targetPct ?? 2) / 100;
       const SL_PCT = (data.stopLossPct ?? 2) / 100;
 
-      // ── Phase 1: Generate BUY signals on selected timeframe ──
       const tfConfig: Record<string, { maxDays: number; barsPerDay: number }> = {
         "15m": { maxDays: 55, barsPerDay: 26 },
         "30m": { maxDays: 55, barsPerDay: 13 },
         "60m": { maxDays: 700, barsPerDay: 7 },
         "1d":  { maxDays: 5 * 365, barsPerDay: 1 },
       };
-      const { maxDays, barsPerDay } = tfConfig[signalTf] || tfConfig["1d"];
+      const { maxDays, barsPerDay } = tfConfig[tf] || tfConfig["1d"];
 
       const warmupBars = 350;
       const warmupDays = Math.ceil(warmupBars / barsPerDay) + 30;
-      const signalFetchStart = new Date(Math.max(
+      const fetchStart = new Date(Math.max(
         period1.getTime() - warmupDays * 86400_000,
         Date.now() - maxDays * 86400_000,
       ));
 
-      const signalBars = await fetchBars(data.symbol, signalTf, signalFetchStart);
-      if (signalBars.length < 100) return { entries: [], error: "Not enough data" };
+      const result = await yf.chart(data.symbol, {
+        period1: fetchStart,
+        interval: tf as "1d" | "15m" | "30m" | "60m",
+      }, { validateResult: false }) as any;
 
-      // Run Lorentzian on signal timeframe
-      const lorentzResult = runLorentzian(signalBars);
-
-      // Extract BUY signals with timestamps + prices
-      // Apply 12 PM filter for intraday TFs
-      interface StoredSignal {
-        price: number;
-        timestamp: number;
-        date: string;
-        time: string;
+      const bars: Bar[] = [];
+      for (const q of result.quotes) {
+        if (q.open == null || q.high == null || q.low == null || q.close == null) continue;
+        const time = q.date instanceof Date ? q.date.getTime() : new Date(q.date as string).getTime();
+        bars.push({ open: q.open, high: q.high, low: q.low, close: q.close, volume: q.volume ?? 0, time });
       }
 
-      const signals: StoredSignal[] = [];
+      if (bars.length < 100) return { entries: [], error: "Not enough data" };
+
+      // Run Lorentzian classification
+      const lorentzResult = runLorentzian(bars);
+
+      // Build signal index
+      const signalAt = new Map<number, { dir: "BUY" | "SELL"; price: number }>();
       for (const sig of lorentzResult.signals) {
-        if (sig.source !== "Original" || sig.signal !== "BUY") continue;
-        const bar = signalBars[sig.index];
-        if (bar.time < period1.getTime()) continue; // Before our range
-
-        const { date, time } = formatIST(bar.time);
-
-        // 12 PM filter for intraday timeframes
-        if (signalTf !== "1d") {
-          const hour = parseInt(time.slice(0, 2), 10);
-          if (hour < 12) continue;
-        }
-
-        signals.push({
-          price: bar.close,
-          timestamp: bar.time,
-          date,
-          time: signalTf === "1d" ? "Daily" : time,
+        if (sig.source !== "Original" || !sig.signal) continue;
+        signalAt.set(sig.index, {
+          dir: sig.signal as "BUY" | "SELL",
+          price: bars[sig.index].close,
         });
       }
 
-      if (signals.length === 0) return { entries: [] };
-
-      // ── Phase 2: Retest + Exit on finest available resolution ──
-      const periodDays = Math.ceil((Date.now() - period1.getTime()) / 86400_000);
-      const fineTf = finestAvailableTf(periodDays);
-
-      // If fine TF is finer than signal TF, fetch separate data
-      // Otherwise reuse signal bars (they're already the finest)
-      let fineBars: Bar[];
-      if (TF_ORDER[fineTf] < TF_ORDER[signalTf]) {
-        // Fine TF is finer → fetch new data
-        const fineMaxDays = tfConfig[fineTf].maxDays;
-        const fineFetchStart = new Date(Math.max(
-          period1.getTime(),
-          Date.now() - fineMaxDays * 86400_000,
-        ));
-        fineBars = await fetchBars(data.symbol, fineTf, fineFetchStart);
-      } else {
-        // Signal TF is already the finest or equal → reuse
-        fineBars = signalBars;
-      }
-
-      if (fineBars.length === 0) return { entries: [] };
-
-      // ── Walk through fine bars: retest detection + exit ──
+      const rangeStart = period1.getTime();
       const entries: BacktestEntry[] = [];
-      let pendingSignal: StoredSignal | null = null;
-      let signalIdx = 0; // Pointer into sorted signals array
 
-      for (let i = 0; i < fineBars.length; i++) {
-        const bar = fineBars[i];
+      let pending: {
+        dir: "BUY" | "SELL";
+        price: number;
+        date: string;
+        time: string;
+        barIndex: number;
+      } | null = null;
 
-        // Check if any new signals have become active (signal timestamp <= bar time)
-        // Latest signal always replaces previous (per user rules)
-        while (signalIdx < signals.length && signals[signalIdx].timestamp <= bar.time) {
-          pendingSignal = signals[signalIdx];
-          signalIdx++;
-        }
+      for (let i = 0; i < bars.length; i++) {
+        const bar = bars[i];
 
-        // Check for retest of pending signal
-        if (pendingSignal && bar.time > pendingSignal.timestamp) {
-          const touching = bar.low <= pendingSignal.price && bar.high >= pendingSignal.price;
+        // Check retest of pending signal
+        if (pending && i > pending.barIndex && bar.time >= rangeStart) {
+          const touching = bar.low <= pending.price && bar.high >= pending.price;
           if (touching) {
             const { date: rtDate, time: rtTime } = formatIST(bar.time);
-            const entryPrice = pendingSignal.price;
-            const entryTimestamp = bar.time;
+            const displayTime = tf === "1d" ? "Intraday" : rtTime;
+            const entryPrice = pending.price;
 
-            // ── Find exit: walk forward through ALL fine bars ──
+            // ── Calculate exit: walk forward until target or stoploss ──
             let exitType: "TARGET" | "STOPLOSS" = "STOPLOSS";
             let exitPrice = bar.close;
+            let exitTime = displayTime;
             let exitDate = rtDate;
-            let exitTime = rtTime;
             let holdingMinutes = 0;
 
-            // Check retest bar itself
-            const hitEntry = checkExitOnBar(entryPrice, bar, TARGET_PCT, SL_PCT);
+            const entryMinutes = tf !== "1d" ? istMinutesFromTime(rtTime) : 0;
+
+            // Check the retest bar itself first
+            const hitEntry = checkExitOnBar(pending.dir, entryPrice, bar, TARGET_PCT, SL_PCT);
             if (hitEntry) {
               exitType = hitEntry.type;
               exitPrice = hitEntry.price;
+              exitTime = displayTime;
               exitDate = rtDate;
-              exitTime = rtTime;
               holdingMinutes = 0;
             } else {
               // Walk forward through ALL subsequent bars (no day limit)
               let found = false;
-              for (let k = i + 1; k < fineBars.length; k++) {
-                const fBar = fineBars[k];
+              for (let k = i + 1; k < bars.length; k++) {
+                const fBar = bars[k];
                 const { date: fDate, time: fTime } = formatIST(fBar.time);
 
-                const hitFwd = checkExitOnBar(entryPrice, fBar, TARGET_PCT, SL_PCT);
+                const hitFwd = checkExitOnBar(pending.dir, entryPrice, fBar, TARGET_PCT, SL_PCT);
                 if (hitFwd) {
                   exitType = hitFwd.type;
                   exitPrice = hitFwd.price;
+                  exitTime = tf === "1d" ? "Intraday" : fTime;
                   exitDate = fDate;
-                  exitTime = fTime;
-                  holdingMinutes = Math.round((fBar.time - entryTimestamp) / 60000);
+                  if (tf !== "1d") {
+                    // Calculate holding in minutes across days
+                    const totalMins = Math.round((fBar.time - bar.time) / 60000);
+                    holdingMinutes = totalMins;
+                  } else {
+                    // Days held
+                    holdingMinutes = Math.round((fBar.time - bar.time) / 86400000) * 375;
+                  }
                   found = true;
                   break;
                 }
               }
 
               if (!found) {
-                // End of data — close at last bar
-                const lastBar = fineBars[fineBars.length - 1];
+                // Never hit — close at last bar (edge case: end of data)
+                const lastBar = bars[bars.length - 1];
                 const { date: lDate, time: lTime } = formatIST(lastBar.time);
                 exitPrice = lastBar.close;
+                exitTime = tf === "1d" ? "15:30" : lTime;
                 exitDate = lDate;
-                exitTime = lTime;
-                const pnlCheck = exitPrice - entryPrice;
+                const pnlCheck = pending.dir === "BUY" ? exitPrice - entryPrice : entryPrice - exitPrice;
                 exitType = pnlCheck >= 0 ? "TARGET" : "STOPLOSS";
-                holdingMinutes = Math.round((lastBar.time - entryTimestamp) / 60000);
+                holdingMinutes = Math.round((lastBar.time - bar.time) / 60000);
               }
             }
 
-            // Calculate P&L (BUY only)
-            const pnl = exitPrice - entryPrice;
+            // Calculate P&L
+            const pnl = pending.dir === "BUY"
+              ? exitPrice - entryPrice
+              : entryPrice - exitPrice;
             const pnlPct = (pnl / entryPrice) * 100;
 
             entries.push({
               symbol: data.symbol,
               name: data.name,
-              direction: "BUY",
-              signalDate: pendingSignal.date,
-              signalTime: pendingSignal.time,
-              signalPrice: pendingSignal.price,
+              direction: pending.dir,
+              signalDate: pending.date,
+              signalTime: tf === "1d" ? "Intraday" : pending.time,
+              signalPrice: pending.price,
               retestDate: rtDate,
-              retestTime: rtTime,
+              retestTime: displayTime,
               retestPrice: entryPrice,
               exitType,
               exitPrice: Math.round(exitPrice * 100) / 100,
-              exitDate,
               exitTime,
               pnl: Math.round(pnl * 100) / 100,
               pnlPct: Math.round(pnlPct * 100) / 100,
@@ -324,9 +286,26 @@ export const backtestStock = createServerFn({ method: "POST" })
               holdingMinutes: Math.max(0, holdingMinutes),
             });
 
-            // Signal consumed — clear it
-            pendingSignal = null;
+            pending = null;
           }
+        }
+
+        // Check for new signal → replace pending
+        // Only BUY signals, only after 12 PM IST (intraday TFs)
+        const newSig = signalAt.get(i);
+        if (newSig && newSig.dir === "BUY") {
+          const { date, time } = formatIST(bar.time);
+          if (tf !== "1d") {
+            const hour = parseInt(time.slice(0, 2), 10);
+            if (hour < 12) continue;
+          }
+          pending = {
+            dir: newSig.dir,
+            price: newSig.price,
+            date,
+            time,
+            barIndex: i,
+          };
         }
       }
 
@@ -346,15 +325,13 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
 
     allEntries.sort((a, b) => `${a.retestDate} ${a.retestTime}`.localeCompare(`${b.retestDate} ${b.retestTime}`));
 
-    const openUntil = new Map<string, number>();
+    const openUntil = new Map<string, string>();
     const filtered: BacktestEntry[] = [];
     for (const e of allEntries) {
-      const entryTs = new Date(`${e.retestDate}T${e.retestTime}`).getTime();
-      const exitTs = new Date(`${e.exitDate}T${e.exitTime}`).getTime() || entryTs;
-      const lastExit = openUntil.get(e.symbol) || 0;
-      if (entryTs < lastExit) continue; // Overlapping trade
+      const lastExit = openUntil.get(e.symbol);
+      if (lastExit && e.retestDate <= lastExit) continue;
       filtered.push(e);
-      openUntil.set(e.symbol, exitTs);
+      openUntil.set(e.symbol, e.retestDate);
     }
 
     const trades: BacktestTrade[] = [];
@@ -366,15 +343,11 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
         symbol: e.symbol,
         name: e.name,
         direction: e.direction,
-        signalDate: e.signalDate,
-        signalTime: e.signalTime,
-        signalPrice: e.signalPrice,
         entryDate: e.retestDate,
         entryTime: e.retestTime,
         entryPrice: e.retestPrice,
         exitType: e.exitType,
         exitPrice: e.exitPrice,
-        exitDate: e.exitDate,
         exitTime: e.exitTime,
         pnl: e.pnl,
         pnlPct: e.pnlPct,
@@ -404,6 +377,7 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
 
     const targetExits = trades.filter((t) => t.exitType === "TARGET").length;
     const stoplossExits = trades.filter((t) => t.exitType === "STOPLOSS").length;
+
     const totalHolding = trades.reduce((a, t) => a + t.holdingMinutes, 0);
 
     const summary: BacktestSummary = {
@@ -418,6 +392,7 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
       avgHoldingMinutes: trades.length > 0 ? Math.round(totalHolding / trades.length) : 0,
       targetExits,
       stoplossExits,
+
       maxGain: returns.length > 0 ? Math.round(Math.max(...returns) * 100) / 100 : 0,
       maxLoss: returns.length > 0 ? Math.round(Math.min(...returns) * 100) / 100 : 0,
     };

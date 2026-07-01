@@ -137,12 +137,11 @@ export function runLorentzian(bars: Bar[], userSettings: Partial<LorentzianSetti
       continue;
     }
 
-    // Reset per-bar ANN loop (Pine accumulates across bars but the predictions array is shifted)
-    // The Pine logic actually keeps `predictions` and `distances` persistent vars across bars,
-    // but the loop runs every bar over `sizeLoop` historical bars and pushes when d >= lastDistance & i%4.
-    lastDistance = -1;
-    distances.length = 0;
-    predictions.length = 0;
+    // IMPORTANT: Do NOT reset lastDistance/distances/predictions here.
+    // In Pine Script these are `var` (persistent) variables. The loop runs
+    // each bar from 0 to sizeLoop, and the carry-over lastDistance threshold
+    // from the previous bar is what makes neighbor selection selective.
+    // Resetting them caused phantom signals that don't match TradingView.
 
     const sizeLoop = Math.min(s.maxBarsBack - 1, bar);
     for (let i = 0; i <= sizeLoop; i++) {
