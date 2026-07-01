@@ -300,19 +300,19 @@ function Index() {
   const sellCount = originals.filter((r) => r.signal === "SELL").length;
 
   return (
-    <div className="min-h-screen" style={{ background: "oklch(0.97 0.004 250)" }}>
+    <div className="min-h-screen" style={{ background: "var(--background)" }}>
       {/* ── Header ── */}
-      <header style={{ background: "linear-gradient(180deg, oklch(1 0 0), oklch(0.97 0.004 250))", borderBottom: "1px solid oklch(0.90 0.01 255)" }}>
+      <header style={{ background: "linear-gradient(180deg, oklch(0.98 0.01 78), var(--background))", borderBottom: "1px solid var(--border)" }}>
         <div className="mx-auto max-w-[1440px] page-pad header-pad px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-cyan">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "oklch(1 0 0)" }}>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-sage" style={{ boxShadow: "0 2px 8px oklch(0.52 0.10 155 / 25%)" }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "oklch(0.99 0.005 90)" }}>
                 <polyline points="22,7 13.5,15.5 8.5,10.5 2,17" /><polyline points="16,7 22,7 22,13" />
               </svg>
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight" style={{ color: "oklch(0.18 0.03 260)" }}>Signal Scanner Pro</h1>
-              <p className="text-xs" style={{ color: "oklch(0.50 0.03 255)" }}>NSE 500 · Lorentzian Classification · Yahoo Finance</p>
+              <h1 className="text-lg font-extrabold tracking-tight" style={{ color: "var(--charcoal)", letterSpacing: "-0.02em" }}>Signal Scanner Pro</h1>
+              <p className="text-xs" style={{ color: "var(--warm-gray)" }}>NSE 500 · Lorentzian Classification · Yahoo Finance</p>
             </div>
           </div>
         </div>
@@ -322,41 +322,41 @@ function Index() {
         {/* ── Stat Cards ── */}
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div className="stat-card">
-            <div className="text-xs font-medium" style={{ color: "oklch(0.50 0.03 255)" }}>Total Signals</div>
-            <div className="mt-1 text-2xl font-bold mono" style={{ color: "oklch(0.20 0.03 260)" }}>{originals.length}</div>
+            <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--warm-gray)" }}>Total Signals</div>
+            <div className="mt-2 text-3xl font-extrabold mono" style={{ color: "var(--charcoal)" }}>{originals.length}</div>
           </div>
-          <div className="stat-card" style={{ borderColor: "oklch(0.50 0.16 150 / 20%)" }}>
-            <div className="text-xs font-medium text-profit">BUY Signals</div>
-            <div className="mt-1 text-2xl font-bold mono text-profit">{buyCount}</div>
+          <div className="stat-card" style={{ borderColor: "oklch(0.52 0.10 155 / 25%)" }}>
+            <div className="text-xs font-semibold uppercase tracking-wider text-profit">BUY Signals</div>
+            <div className="mt-2 text-3xl font-extrabold mono text-profit">{buyCount}</div>
           </div>
-          <div className="stat-card" style={{ borderColor: "oklch(0.55 0.22 25 / 20%)" }}>
-            <div className="text-xs font-medium text-loss">SELL Signals</div>
-            <div className="mt-1 text-2xl font-bold mono text-loss">{sellCount}</div>
+          <div className="stat-card" style={{ borderColor: "oklch(0.55 0.14 35 / 25%)" }}>
+            <div className="text-xs font-semibold uppercase tracking-wider text-loss">SELL Signals</div>
+            <div className="mt-2 text-3xl font-extrabold mono text-loss">{sellCount}</div>
           </div>
-          <div className="stat-card">
-            <div className="text-xs font-medium" style={{ color: "oklch(0.50 0.03 255)" }}>Retests</div>
-            <div className="mt-1 text-2xl font-bold mono" style={{ color: "oklch(0.50 0.16 200)" }}>{retests.length}</div>
+          <div className="stat-card" style={{ borderColor: "oklch(0.58 0.12 80 / 25%)" }}>
+            <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: "oklch(0.52 0.10 80)" }}>Retests</div>
+            <div className="mt-2 text-3xl font-extrabold mono" style={{ color: "oklch(0.52 0.10 80)" }}>{retests.length}</div>
           </div>
         </div>
 
         {/* ── Controls ── */}
-        <div className="glass-card controls-bar mb-5 flex flex-wrap items-center gap-3 px-5 py-3">
-          <label className="text-xs font-semibold" style={{ color: "oklch(0.48 0.03 255)" }}>Timeframe</label>
+        <div className="glass-card controls-bar mb-5 flex flex-wrap items-center gap-3 px-5 py-4">
+          <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--warm-gray)" }}>Timeframe</label>
           <select className="ctrl-select" value={tf} onChange={(e) => setTf(e.target.value as Tf)} disabled={running}>
             <option value="15m">15 min</option>
             <option value="30m">30 min</option>
             <option value="60m">1 hour</option>
             <option value="1d">1 day</option>
           </select>
-          <label className="text-xs font-semibold" style={{ color: "oklch(0.48 0.03 255)" }}>Show</label>
+          <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--warm-gray)" }}>Show</label>
           <select className="ctrl-select" value={filter} onChange={(e) => setFilter(e.target.value as "ALL" | "BUY" | "SELL")} disabled={running}>
             <option value="ALL">All</option>
             <option value="BUY">BUY only</option>
             <option value="SELL">SELL only</option>
           </select>
-          <input className="ctrl-input w-52" placeholder="Search stock, index or crypto…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <label className="live-toggle ml-auto flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: "oklch(0.48 0.03 255)" }}>
-            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-[oklch(0.50_0.16_200)]" />
+          <input className="ctrl-input w-52" placeholder="Search stock…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <label className="live-toggle ml-auto flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: "var(--warm-gray)" }}>
+            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-[oklch(0.52_0.10_155)]" />
             {autoRefresh && <span className="live-dot" />}
             Live retest
           </label>
@@ -369,7 +369,7 @@ function Index() {
         {running && (
           <div className="mb-4">
             <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${pct}%` }} /></div>
-            <div className="mt-1.5 text-xs mono" style={{ color: "oklch(0.50 0.03 255)" }}>
+            <div className="mt-1.5 text-xs mono" style={{ color: "var(--warm-gray)" }}>
               Processing {progress.done} / {progress.total} symbols ({pct}%)
             </div>
           </div>
@@ -377,7 +377,7 @@ function Index() {
 
         {/* ── Status ── */}
         {!running && (
-          <div className="mb-4 flex flex-wrap items-center gap-4 text-xs" style={{ color: "oklch(0.50 0.03 255)" }}>
+          <div className="mb-4 flex flex-wrap items-center gap-4 text-xs" style={{ color: "var(--warm-gray)" }}>
             {retestRefreshing && <span><span className="live-dot" /> Updating retests…</span>}
             {lastUpdated && <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>}
             <span className="ml-auto">Universe: {FULL_UNIVERSE.length} symbols</span>
@@ -385,7 +385,7 @@ function Index() {
         )}
 
         {/* ── Tab Pills ── */}
-        <div className="tab-row mb-4" role="tablist">
+        <div className="tab-row mb-5" role="tablist">
           {[
             { id: "original", label: `Original (${originals.length})` },
             { id: "top10", label: `Top 10 Retest` },
@@ -406,11 +406,11 @@ function Index() {
         </div>
 
         {/* ── Tab Panels ── */}
-        <div className="glass-card p-5">
+        <div className="glass-card p-6">
           {loadingTf ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <div style={{ width: 32, height: 32, border: "3px solid oklch(0.90 0.01 255)", borderTopColor: "oklch(0.55 0.17 200)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-              <span className="text-sm" style={{ color: "oklch(0.50 0.03 255)" }}>Loading {tf} data…</span>
+              <div style={{ width: 36, height: 36, border: "3px solid oklch(0.88 0.015 75)", borderTopColor: "var(--sage)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              <span className="text-sm font-medium" style={{ color: "var(--warm-gray)" }}>Loading {tf} data…</span>
             </div>
           ) : (
             <>
@@ -424,8 +424,8 @@ function Index() {
         </div>
 
         {/* ── Footer ── */}
-        <footer className="mt-6 pb-8 text-center text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>
-          Source: Pine v5 "Machine Learning: Lorentzian Classification (Signals Only)" by jdehorty. MPI 2.0, OHL·C. Yahoo Finance. Times in Asia/Kolkata (IST). Information only — not investment advice.
+        <footer className="mt-8 pb-8 text-center text-xs" style={{ color: "oklch(0.55 0.02 65)" }}>
+          Source: Pine v5 "Machine Learning: Lorentzian Classification (Signals Only)" by jdehorty · MPI 2.0 · Yahoo Finance · Times in IST · Not investment advice
         </footer>
       </main>
     </div>
@@ -486,8 +486,8 @@ function SignalTable({ title, subtitle, rows, onAddTrade, activeSymbols }: {
           </button>
         )}
       </div>
-      <p className="mt-0.5 mb-2 text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>{subtitle}</p>
-      <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.90 0.01 255)" }}>
+      <p className="mt-0.5 mb-2 text-xs" style={{ color: "oklch(0.55 0.02 65)" }}>{subtitle}</p>
+      <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.88 0.015 75)" }}>
         <table className="trading-table">
           <thead>
             <tr>
@@ -549,7 +549,7 @@ function SignalTable({ title, subtitle, rows, onAddTrade, activeSymbols }: {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={colSpan} className="text-center py-12" style={{ color: "oklch(0.58 0.02 255)" }}>
+              <tr><td colSpan={colSpan} className="text-center py-12" style={{ color: "oklch(0.55 0.02 65)" }}>
                 {rows.length === 0 ? "Run scan to populate." : "No matching results."}
               </td></tr>
             )}
@@ -557,8 +557,8 @@ function SignalTable({ title, subtitle, rows, onAddTrade, activeSymbols }: {
               const isActive = activeSymbols?.has(r.symbol) ?? false;
               return (
                 <tr key={`${r.symbol}-${r.source}-${i}`}>
-                  <td className="mono" style={{ color: "oklch(0.58 0.02 255)" }}>{i + 1}</td>
-                  <td className="mono font-medium" style={{ color: "oklch(0.22 0.03 260)" }}>{r.symbol.replace(".NS", "")}</td>
+                  <td className="mono" style={{ color: "oklch(0.55 0.02 65)" }}>{i + 1}</td>
+                  <td className="mono font-medium" style={{ color: "var(--charcoal)" }}>{r.symbol.replace(".NS", "")}</td>
                   <td>{r.name}</td>
                   <td><SignalBadge signal={r.signal} /></td>
                   <td className="mono">{r.signalDate}</td>
@@ -566,8 +566,8 @@ function SignalTable({ title, subtitle, rows, onAddTrade, activeSymbols }: {
                   <td className="text-right mono">{r.signalPrice.toFixed(2)}</td>
                   <td className="text-right mono">{r.currentPrice != null ? r.currentPrice.toFixed(2) : "—"}</td>
                   <td className="text-right mono"><PnlText value={r.changePct} /></td>
-                  <td className="mono" style={{ color: "oklch(0.48 0.03 255)" }}>{r.timeframe}</td>
-                  <td style={{ color: r.trend === "Bullish" ? "oklch(0.45 0.15 150)" : r.trend === "Bearish" ? "oklch(0.50 0.18 25)" : "oklch(0.50 0.03 255)" }}>
+                  <td className="mono" style={{ color: "var(--warm-gray)" }}>{r.timeframe}</td>
+                  <td style={{ color: r.trend === "Bullish" ? "var(--sage)" : r.trend === "Bearish" ? "var(--terracotta)" : "var(--warm-gray)" }}>
                     {r.trend}
                   </td>
                   {onAddTrade && (
@@ -598,13 +598,13 @@ function Top10Panel({ retestBuys, retestSells }: { retestBuys: FlatRow[]; retest
     <div className="grid gap-6 lg:grid-cols-2">
       <div>
         <div className="section-title mb-3">🟢 Top BUY Retests <span className="count">({retestBuys.length})</span></div>
-        <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.90 0.01 255)" }}>
+        <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.88 0.015 75)" }}>
           <table className="trading-table">
             <thead><tr><th className="text-left">#</th><th className="text-left">Symbol</th><th className="text-left">Company</th><th className="text-right">Signal</th><th className="text-right">Current</th><th className="text-right">Change</th><th className="text-left">Trend</th></tr></thead>
             <tbody>
-              {retestBuys.length === 0 && <tr><td colSpan={7} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No BUY retests yet.</td></tr>}
+              {retestBuys.length === 0 && <tr><td colSpan={7} className="text-center py-8" style={{ color: "oklch(0.55 0.02 65)" }}>No BUY retests yet.</td></tr>}
               {retestBuys.map((r, i) => (
-                <tr key={r.symbol}><td className="mono" style={{ color: "oklch(0.58 0.02 255)" }}>{i + 1}</td><td className="mono font-medium" style={{ color: "oklch(0.22 0.03 260)" }}>{r.symbol.replace(".NS", "")}</td><td>{r.name}</td><td className="text-right mono">{r.signalPrice.toFixed(2)}</td><td className="text-right mono">{r.currentPrice?.toFixed(2) ?? "—"}</td><td className="text-right mono"><PnlText value={r.changePct} /></td><td style={{ color: "oklch(0.45 0.15 150)" }}>{r.trend}</td></tr>
+                <tr key={r.symbol}><td className="mono" style={{ color: "oklch(0.55 0.02 65)" }}>{i + 1}</td><td className="mono font-medium" style={{ color: "var(--charcoal)" }}>{r.symbol.replace(".NS", "")}</td><td>{r.name}</td><td className="text-right mono">{r.signalPrice.toFixed(2)}</td><td className="text-right mono">{r.currentPrice?.toFixed(2) ?? "—"}</td><td className="text-right mono"><PnlText value={r.changePct} /></td><td style={{ color: "var(--sage)" }}>{r.trend}</td></tr>
               ))}
             </tbody>
           </table>
@@ -612,13 +612,13 @@ function Top10Panel({ retestBuys, retestSells }: { retestBuys: FlatRow[]; retest
       </div>
       <div>
         <div className="section-title mb-3">🔴 Top SELL Retests <span className="count">({retestSells.length})</span></div>
-        <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.90 0.01 255)" }}>
+        <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.88 0.015 75)" }}>
           <table className="trading-table">
             <thead><tr><th className="text-left">#</th><th className="text-left">Symbol</th><th className="text-left">Company</th><th className="text-right">Signal</th><th className="text-right">Current</th><th className="text-right">Change</th><th className="text-left">Trend</th></tr></thead>
             <tbody>
-              {retestSells.length === 0 && <tr><td colSpan={7} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No SELL retests yet.</td></tr>}
+              {retestSells.length === 0 && <tr><td colSpan={7} className="text-center py-8" style={{ color: "oklch(0.55 0.02 65)" }}>No SELL retests yet.</td></tr>}
               {retestSells.map((r, i) => (
-                <tr key={r.symbol}><td className="mono" style={{ color: "oklch(0.58 0.02 255)" }}>{i + 1}</td><td className="mono font-medium" style={{ color: "oklch(0.22 0.03 260)" }}>{r.symbol.replace(".NS", "")}</td><td>{r.name}</td><td className="text-right mono">{r.signalPrice.toFixed(2)}</td><td className="text-right mono">{r.currentPrice?.toFixed(2) ?? "—"}</td><td className="text-right mono"><PnlText value={r.changePct} /></td><td style={{ color: "oklch(0.50 0.18 25)" }}>{r.trend}</td></tr>
+                <tr key={r.symbol}><td className="mono" style={{ color: "oklch(0.55 0.02 65)" }}>{i + 1}</td><td className="mono font-medium" style={{ color: "var(--charcoal)" }}>{r.symbol.replace(".NS", "")}</td><td>{r.name}</td><td className="text-right mono">{r.signalPrice.toFixed(2)}</td><td className="text-right mono">{r.currentPrice?.toFixed(2) ?? "—"}</td><td className="text-right mono"><PnlText value={r.changePct} /></td><td style={{ color: "var(--terracotta)" }}>{r.trend}</td></tr>
               ))}
             </tbody>
           </table>
@@ -795,21 +795,21 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
   }, [openTrades, closedTrades]);
 
 
-  if (!loaded) return <div className="py-12 text-center" style={{ color: "oklch(0.50 0.03 255)" }}>Loading trades…</div>;
+  if (!loaded) return <div className="py-12 text-center" style={{ color: "var(--warm-gray)" }}>Loading trades…</div>;
 
   return (
     <div className="space-y-6">
       {/* Add trades from the All Retests tab using the "Add" button */}
-      <p className="text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>Go to the <strong>All Retests</strong> tab and click <strong>"Add"</strong> on any stock to start a paper trade. Each trade tracks P&L for 5 trading days, then auto-closes. Prices update every 60s.</p>
+      <p className="text-xs" style={{ color: "oklch(0.55 0.02 65)" }}>Go to the <strong>All Retests</strong> tab and click <strong>"Add"</strong> on any stock to start a paper trade. Each trade tracks P&L for 5 trading days, then auto-closes. Prices update every 60s.</p>
 
       {/* ── Active Trades ── */}
       <div>
         <div className="mb-2 flex items-center gap-3">
           <div className="section-title">Active Trades <span className="count">({openTrades.length})</span></div>
-          {updating && <span className="text-xs" style={{ color: "oklch(0.50 0.03 255)" }}><span className="live-dot" />Updating…</span>}
+          {updating && <span className="text-xs" style={{ color: "var(--warm-gray)" }}><span className="live-dot" />Updating…</span>}
           {openTrades.length > 0 && <button onClick={updatePrices} disabled={updating} className="btn-outline-sm ml-auto">Refresh</button>}
         </div>
-        <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.90 0.01 255)" }}>
+        <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.88 0.015 75)" }}>
           <table className="trading-table">
             <thead><tr>
               <th className="text-left">#</th>
@@ -821,11 +821,11 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
               <th className="text-center">Action</th>
             </tr></thead>
             <tbody>
-              {openTrades.length === 0 && <tr><td colSpan={10} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No active trades. Add stocks from the list above.</td></tr>}
+              {openTrades.length === 0 && <tr><td colSpan={10} className="text-center py-8" style={{ color: "oklch(0.55 0.02 65)" }}>No active trades. Add stocks from the list above.</td></tr>}
               {openTrades.map((t, i) => (
                 <tr key={t.tradeId}>
-                  <td className="mono" style={{ color: "oklch(0.58 0.02 255)" }}>{i + 1}</td>
-                  <td className="mono font-medium" style={{ color: "oklch(0.22 0.03 260)" }}>{t.symbol.replace(".NS", "")}</td>
+                  <td className="mono" style={{ color: "oklch(0.55 0.02 65)" }}>{i + 1}</td>
+                  <td className="mono font-medium" style={{ color: "var(--charcoal)" }}>{t.symbol.replace(".NS", "")}</td>
                   <td><SignalBadge signal={t.side} /></td>
                   <td className="text-right mono">₹{t.entryPrice.toFixed(2)}</td>
                   {(t.dayPnl || [null, null, null, null, null]).map((p, idx) => (
@@ -846,7 +846,7 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
           <div className="section-title">Trade History <span className="count">({closedTrades.length})</span></div>
           {closedTrades.length > 0 && <button onClick={doClearHistory} className="btn-danger-sm ml-auto">Clear history</button>}
         </div>
-        <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.90 0.01 255)" }}>
+        <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.88 0.015 75)" }}>
           <table className="trading-table">
             <thead><tr>
               <th className="text-left">#</th>
@@ -858,11 +858,11 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
               <th className="text-center">Action</th>
             </tr></thead>
             <tbody>
-              {closedTrades.length === 0 && <tr><td colSpan={10} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No closed trades yet.</td></tr>}
+              {closedTrades.length === 0 && <tr><td colSpan={10} className="text-center py-8" style={{ color: "oklch(0.55 0.02 65)" }}>No closed trades yet.</td></tr>}
               {closedTrades.map((t, i) => (
                 <tr key={t.tradeId}>
-                  <td className="mono" style={{ color: "oklch(0.58 0.02 255)" }}>{i + 1}</td>
-                  <td className="mono font-medium" style={{ color: "oklch(0.22 0.03 260)" }}>{t.symbol.replace(".NS", "")}</td>
+                  <td className="mono" style={{ color: "oklch(0.55 0.02 65)" }}>{i + 1}</td>
+                  <td className="mono font-medium" style={{ color: "var(--charcoal)" }}>{t.symbol.replace(".NS", "")}</td>
                   <td><SignalBadge signal={t.side} /></td>
                   <td className="text-right mono">₹{t.entryPrice.toFixed(2)}</td>
                   {(t.dayPnl || [null, null, null, null, null]).map((p, idx) => (
@@ -873,7 +873,7 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
                 </tr>
               ))}
               {(openTrades.length + closedTrades.length) > 0 && (
-                <tr style={{ background: "oklch(0.97 0.004 250)" }}>
+                <tr style={{ background: "var(--background)" }}>
                   <td colSpan={4} className="font-semibold" style={{ color: "oklch(0.30 0.02 260)" }}>Totals ({dayTotals[0]?.n || 0} trades) — avg · cumulative</td>
                   {dayTotals.map((dt, i) => (
                     <td key={i} className={`text-right mono ${dt.avg == null ? '' : dt.avg >= 0 ? 'text-profit' : 'text-loss'}`}>
@@ -888,7 +888,7 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
         </div>
       </div>
 
-      <p className="text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>
+      <p className="text-xs" style={{ color: "oklch(0.55 0.02 65)" }}>
         Paper trades are persisted in MongoDB. P&L % is side-adjusted (BUY: up=profit, SELL: down=profit). Trades auto-close after 5 trading days.
       </p>
     </div>
@@ -1033,21 +1033,21 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="section-title">Historical Backtest — Signal Retest Strategy</div>
-        <label className="flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: "oklch(0.48 0.03 255)" }}>
+        <label className="flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: "var(--warm-gray)" }}>
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="accent-[oklch(0.50_0.16_200)]" />
           Backtest Mode
         </label>
       </div>
 
       {!enabled && (
-        <div className="py-12 text-center text-sm" style={{ color: "oklch(0.50 0.03 255)" }}>
+        <div className="py-12 text-center text-sm" style={{ color: "var(--warm-gray)" }}>
           Enable Backtest Mode to run historical analysis.
         </div>
       )}
 
       {enabled && (
         <>
-          <p className="mt-0.5 mb-4 text-xs" style={{ color: "oklch(0.58 0.02 255)" }}>
+          <p className="mt-0.5 mb-4 text-xs" style={{ color: "oklch(0.55 0.02 65)" }}>
             Entry on first retest of signal price. Exit at <strong>+{targetPct}% profit</strong> or <strong>-{stopLossPct}% stop loss</strong>.
           </p>
 
@@ -1122,7 +1122,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
           {!running && result && (
             <>
               {/* Meta */}
-              <div className="mb-4 flex flex-wrap gap-4 text-xs" style={{ color: "oklch(0.50 0.03 255)" }}>
+              <div className="mb-4 flex flex-wrap gap-4 text-xs" style={{ color: "var(--warm-gray)" }}>
                 <span>Period: {result.dateRangeUsed.start} → {result.dateRangeUsed.end}</span>
                 <span>Stocks scanned: {result.totalStocksProcessed}</span>
                 <span>Stocks with trades: {result.totalStocksWithSignals}</span>
@@ -1134,11 +1134,11 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                 <div className="stat-card">
                   <div className="text-xs font-semibold mb-2" style={{ color: "oklch(0.35 0.03 260)" }}>Performance</div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Total Trades</span>
-                    <span className="mono font-semibold text-right" style={{ color: "oklch(0.25 0.03 260)" }}>{result.summary.totalTrades}</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Win Rate</span>
-                    <span className="mono font-semibold text-right" style={{ color: result.summary.winRate >= 50 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{result.summary.winRate}%</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>W / L</span>
+                    <span style={{ color: "var(--warm-gray)" }}>Total Trades</span>
+                    <span className="mono font-semibold text-right" style={{ color: "var(--charcoal)" }}>{result.summary.totalTrades}</span>
+                    <span style={{ color: "var(--warm-gray)" }}>Win Rate</span>
+                    <span className="mono font-semibold text-right" style={{ color: result.summary.winRate >= 50 ? "var(--sage)" : "var(--terracotta)" }}>{result.summary.winRate}%</span>
+                    <span style={{ color: "var(--warm-gray)" }}>W / L</span>
                     <span className="mono font-semibold text-right" style={{ color: "oklch(0.35 0.03 260)" }}>{result.summary.wins} / {result.summary.losses}</span>
                   </div>
                 </div>
@@ -1147,12 +1147,12 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                 <div className="stat-card">
                   <div className="text-xs font-semibold mb-2" style={{ color: "oklch(0.35 0.03 260)" }}>Returns</div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Avg Return</span>
-                    <span className="mono font-semibold text-right" style={{ color: result.summary.avgReturn >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{result.summary.avgReturn > 0 ? "+" : ""}{result.summary.avgReturn}%</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Total Return</span>
-                    <span className="mono font-semibold text-right" style={{ color: result.summary.totalReturn >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{result.summary.totalReturn > 0 ? "+" : ""}{result.summary.totalReturn}%</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Profit Factor</span>
-                    <span className="mono font-semibold text-right" style={{ color: result.summary.profitFactor >= 1 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>{result.summary.profitFactor === Infinity ? "∞" : result.summary.profitFactor}</span>
+                    <span style={{ color: "var(--warm-gray)" }}>Avg Return</span>
+                    <span className="mono font-semibold text-right" style={{ color: result.summary.avgReturn >= 0 ? "var(--sage)" : "var(--terracotta)" }}>{result.summary.avgReturn > 0 ? "+" : ""}{result.summary.avgReturn}%</span>
+                    <span style={{ color: "var(--warm-gray)" }}>Total Return</span>
+                    <span className="mono font-semibold text-right" style={{ color: result.summary.totalReturn >= 0 ? "var(--sage)" : "var(--terracotta)" }}>{result.summary.totalReturn > 0 ? "+" : ""}{result.summary.totalReturn}%</span>
+                    <span style={{ color: "var(--warm-gray)" }}>Profit Factor</span>
+                    <span className="mono font-semibold text-right" style={{ color: result.summary.profitFactor >= 1 ? "var(--sage)" : "var(--terracotta)" }}>{result.summary.profitFactor === Infinity ? "∞" : result.summary.profitFactor}</span>
                   </div>
                 </div>
 
@@ -1160,11 +1160,11 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                 <div className="stat-card">
                   <div className="text-xs font-semibold mb-2" style={{ color: "oklch(0.35 0.03 260)" }}>Risk</div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Max Gain</span>
+                    <span style={{ color: "var(--warm-gray)" }}>Max Gain</span>
                     <span className="mono font-semibold text-right text-profit">{result.summary.maxGain > 0 ? "+" : ""}{result.summary.maxGain}%</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Max Loss</span>
+                    <span style={{ color: "var(--warm-gray)" }}>Max Loss</span>
                     <span className="mono font-semibold text-right text-loss">{result.summary.maxLoss > 0 ? "+" : ""}{result.summary.maxLoss}%</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Max DD</span>
+                    <span style={{ color: "var(--warm-gray)" }}>Max DD</span>
                     <span className="mono font-semibold text-right text-loss">{result.summary.maxDrawdown > 0 ? "-" : ""}{result.summary.maxDrawdown}%</span>
                   </div>
                 </div>
@@ -1173,11 +1173,11 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                 <div className="stat-card">
                   <div className="text-xs font-semibold mb-2" style={{ color: "oklch(0.35 0.03 260)" }}>Exit Breakdown</div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>+{targetPct}% Target</span>
+                    <span style={{ color: "var(--warm-gray)" }}>+{targetPct}% Target</span>
                     <span className="mono font-semibold text-right text-profit">{result.summary.targetExits}</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>-{stopLossPct}% SL</span>
+                    <span style={{ color: "var(--warm-gray)" }}>-{stopLossPct}% SL</span>
                     <span className="mono font-semibold text-right text-loss">{result.summary.stoplossExits}</span>
-                    <span style={{ color: "oklch(0.50 0.03 255)" }}>Avg Hold</span>
+                    <span style={{ color: "var(--warm-gray)" }}>Avg Hold</span>
                     <span className="mono font-semibold text-right" style={{ color: "oklch(0.35 0.03 260)" }}>{result.summary.avgHoldingMinutes} min</span>
                   </div>
                 </div>
@@ -1186,11 +1186,11 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
               {/* Trades Table */}
               <div className="mb-2 flex flex-wrap items-center gap-3">
                 <div className="section-title">All Trades <span className="count">({sortedTrades.length})</span></div>
-                <button onClick={exportCSV} className="text-xs font-semibold px-3 py-1.5 rounded-md" style={{ background: "oklch(0.45 0.16 150)", color: "#fff" }}>
+                <button onClick={exportCSV} className="text-xs font-semibold px-3 py-1.5 rounded-md" style={{ background: "var(--sage)", color: "#fff" }}>
                   ⬇ Export CSV
                 </button>
               </div>
-              <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.90 0.01 255)" }}>
+              <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid oklch(0.88 0.015 75)" }}>
                 <table className="trading-table">
                   <thead>
                     <tr>
@@ -1214,46 +1214,46 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                   </thead>
                   <tbody>
                     {sortedTrades.length === 0 ? (
-                      <tr><td colSpan={16} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No trades found.</td></tr>
+                      <tr><td colSpan={16} className="text-center py-8" style={{ color: "oklch(0.55 0.02 65)" }}>No trades found.</td></tr>
                     ) : (
                       sortedTrades.map((t, i) => (
                         <tr key={`${t.symbol}-${t.entryDate}-${i}`}>
-                          <td className="mono text-xs" style={{ color: "oklch(0.50 0.03 255)" }}>{i + 1}</td>
-                          <td className="font-semibold" style={{ color: "oklch(0.30 0.04 260)" }}>{t.symbol.replace(".NS", "")}</td>
+                          <td className="mono text-xs" style={{ color: "var(--warm-gray)" }}>{i + 1}</td>
+                          <td className="font-semibold" style={{ color: "var(--charcoal)" }}>{t.symbol.replace(".NS", "")}</td>
                           <td className="text-center">
                             <span style={{
                               fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3,
-                              background: t.direction === "BUY" ? "oklch(0.92 0.08 150)" : "oklch(0.92 0.08 25)",
-                              color: t.direction === "BUY" ? "oklch(0.30 0.15 150)" : "oklch(0.40 0.20 25)",
+                              background: t.direction === "BUY" ? "var(--sage-light)" : "var(--terracotta-light)",
+                              color: t.direction === "BUY" ? "oklch(0.40 0.10 155)" : "var(--terracotta)",
                             }}>{t.direction}</span>
                           </td>
-                          <td className="text-xs" style={{ color: "oklch(0.45 0.02 255)" }}>{t.name}</td>
-                          <td className="mono text-xs" style={{ color: "oklch(0.55 0.12 270)" }}>{t.signalDate}</td>
-                          <td className="mono text-xs" style={{ color: "oklch(0.55 0.12 270)" }}>{t.signalTime}</td>
+                          <td className="text-xs" style={{ color: "var(--warm-gray)" }}>{t.name}</td>
+                          <td className="mono text-xs" style={{ color: "oklch(0.48 0.08 155)" }}>{t.signalDate}</td>
+                          <td className="mono text-xs" style={{ color: "oklch(0.48 0.08 155)" }}>{t.signalTime}</td>
                           <td className="mono text-xs">{t.entryDate}</td>
                           <td className="mono text-xs">{t.entryTime}</td>
                           <td className="mono text-right">{t.entryPrice.toFixed(2)}</td>
                           <td className="text-center">
                             <span style={{
                               fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3,
-                              background: t.exitType === "TARGET" ? "oklch(0.90 0.10 200)" : t.exitType === "STOPLOSS" ? "oklch(0.93 0.08 25)" : "oklch(0.92 0.06 60)",
-                              color: t.exitType === "TARGET" ? "oklch(0.25 0.14 200)" : t.exitType === "STOPLOSS" ? "oklch(0.40 0.20 25)" : "oklch(0.40 0.10 60)",
+                              background: t.exitType === "TARGET" ? "var(--sage-light)" : t.exitType === "STOPLOSS" ? "var(--terracotta-light)" : "var(--gold-light)",
+                              color: t.exitType === "TARGET" ? "oklch(0.35 0.10 155)" : t.exitType === "STOPLOSS" ? "var(--terracotta)" : "oklch(0.45 0.08 80)",
                             }}>{t.exitType === "TARGET" ? `+${targetPct}%` : `-${stopLossPct}%`}</span>
                           </td>
                           <td className="mono text-xs">{t.exitDate}</td>
                           <td className="mono text-xs">{t.exitTime}</td>
                           <td className="mono text-right">{t.exitPrice.toFixed(2)}</td>
-                          <td className="mono text-right font-semibold" style={{ color: t.pnl >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>
+                          <td className="mono text-right font-semibold" style={{ color: t.pnl >= 0 ? "var(--sage)" : "var(--terracotta)" }}>
                             {t.pnl >= 0 ? "+" : ""}{t.pnl.toFixed(2)}
                           </td>
-                          <td className="mono text-right font-semibold" style={{ color: t.pnlPct >= 0 ? "oklch(0.45 0.16 150)" : "oklch(0.55 0.22 25)" }}>
+                          <td className="mono text-right font-semibold" style={{ color: t.pnlPct >= 0 ? "var(--sage)" : "var(--terracotta)" }}>
                             {t.pnlPct >= 0 ? "+" : ""}{t.pnlPct}%
                           </td>
                           <td className="text-center">
                             <span style={{
                               fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
-                              background: t.win ? "oklch(0.92 0.08 150)" : "oklch(0.93 0.08 25)",
-                              color: t.win ? "oklch(0.30 0.15 150)" : "oklch(0.40 0.20 25)",
+                              background: t.win ? "var(--sage-light)" : "var(--terracotta-light)",
+                              color: t.win ? "oklch(0.40 0.10 155)" : "var(--terracotta)",
                             }}>
                               {t.win ? "WIN" : "LOSS"}
                             </span>
