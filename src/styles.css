@@ -753,10 +753,15 @@ header {
   height: 42px;
   margin-bottom: 2px;
   border-radius: 6px;
-  animation: skeletonPulse 1.5s ease-in-out infinite;
   background: linear-gradient(90deg, oklch(0.94 0.01 70) 25%, oklch(0.96 0.008 75) 50%, oklch(0.94 0.01 70) 75%);
   background-size: 200% 100%;
-  animation: skeletonPulse 1.5s ease-in-out infinite, shimmerSkeleton 2s linear infinite;
+  animation: shimmerSkeleton 2s linear infinite;
+}
+.skeleton-bar {
+  border-radius: 4px;
+  background: linear-gradient(90deg, oklch(0.91 0.012 70) 25%, oklch(0.95 0.008 75) 50%, oklch(0.91 0.012 70) 75%);
+  background-size: 200% 100%;
+  animation: shimmerSkeleton 1.8s linear infinite;
 }
 
 @keyframes shimmerSkeleton {

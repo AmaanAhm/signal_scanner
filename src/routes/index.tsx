@@ -122,7 +122,7 @@ function Index() {
   const runningRef = useRef(false);
   const retestRefreshRef = useRef(false);
   const paperRef = useRef<PaperTradeRef>(null);
-  const [loadingTf, setLoadingTf] = useState(false);
+  const [loadingTf, setLoadingTf] = useState(true);
 
   // Load persisted scan results on mount / timeframe change.
   useEffect(() => {
@@ -323,19 +323,19 @@ function Index() {
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4 stagger-children">
           <div className="stat-card">
             <div className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>Total Signals</div>
-            <div className="mt-1 text-2xl font-bold mono" style={{ color: "var(--warm-text)" }}>{originals.length}</div>
+            {loadingTf ? <div className="skeleton-bar mt-2" style={{ width: 60, height: 24 }} /> : <div className="mt-1 text-2xl font-bold mono" style={{ color: "var(--warm-text)" }}>{originals.length}</div>}
           </div>
           <div className="stat-card" style={{ borderColor: "var(--sage-border)" }}>
             <div className="text-xs font-medium text-profit">BUY Signals</div>
-            <div className="mt-1 text-2xl font-bold mono text-profit">{buyCount}</div>
+            {loadingTf ? <div className="skeleton-bar mt-2" style={{ width: 50, height: 24 }} /> : <div className="mt-1 text-2xl font-bold mono text-profit">{buyCount}</div>}
           </div>
           <div className="stat-card" style={{ borderColor: "var(--terra-border)" }}>
             <div className="text-xs font-medium text-loss">SELL Signals</div>
-            <div className="mt-1 text-2xl font-bold mono text-loss">{sellCount}</div>
+            {loadingTf ? <div className="skeleton-bar mt-2" style={{ width: 50, height: 24 }} /> : <div className="mt-1 text-2xl font-bold mono text-loss">{sellCount}</div>}
           </div>
           <div className="stat-card">
             <div className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>Retests</div>
-            <div className="mt-1 text-2xl font-bold mono" style={{ color: "var(--sage)" }}>{retests.length}</div>
+            {loadingTf ? <div className="skeleton-bar mt-2" style={{ width: 50, height: 24 }} /> : <div className="mt-1 text-2xl font-bold mono" style={{ color: "var(--sage)" }}>{retests.length}</div>}
           </div>
         </div>
 
@@ -412,9 +412,30 @@ function Index() {
         {/* ── Tab Panels ── */}
         <div className="glass-card p-5">
           {loadingTf ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <div style={{ width: 32, height: 32, border: "3px solid var(--warm-border)", borderTopColor: "var(--sage)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-              <span className="text-sm" style={{ color: "var(--warm-muted)" }}>Loading {tf} data…</span>
+            <div className="animate-fade-in">
+              {/* Skeleton: mimics signal table header */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="skeleton-bar" style={{ width: 200, height: 18 }} />
+                <div className="skeleton-bar" style={{ width: 40, height: 18 }} />
+              </div>
+              <div className="skeleton-bar mb-2" style={{ width: 300, height: 12 }} />
+              {/* Skeleton: mimics table rows */}
+              <div className="mt-4 rounded-lg overflow-hidden" style={{ border: "1px solid var(--warm-border)" }}>
+                {/* Header row */}
+                <div className="flex gap-2 px-4 py-3" style={{ background: "oklch(0.96 0.008 75)" }}>
+                  {[30, 80, 100, 50, 60, 70, 60, 55, 40, 40].map((w, i) => (
+                    <div key={i} className="skeleton-bar" style={{ width: w, height: 10 }} />
+                  ))}
+                </div>
+                {/* Data rows */}
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="flex gap-2 px-4 py-3" style={{ borderTop: "1px solid var(--warm-border)", animationDelay: `${i * 80}ms` }}>
+                    {[30, 80, 100, 50, 60, 70, 60, 55, 40, 40].map((w, j) => (
+                      <div key={j} className="skeleton-bar" style={{ width: w, height: 12 }} />
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <>
