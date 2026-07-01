@@ -99,7 +99,7 @@ function SignalBadge({ signal }: { signal: "BUY" | "SELL" }) {
   return <span className={signal === "BUY" ? "badge-buy" : "badge-sell"}>{signal}</span>;
 }
 
-// ── Custom styled dropdown (no native <select>) ──
+// ── Custom styled dropdown (no native <select>) — portal-based ──
 function CustomSelect({ value, onChange, options, disabled, className = "", size = "md" }: {
   value: string;
   onChange: (v: string) => void;
@@ -109,48 +109,52 @@ function CustomSelect({ value, onChange, options, disabled, className = "", size
   size?: "sm" | "md";
 }) {
   const [open, setOpen] = useState(false);
-  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number; openUp: boolean }>({ top: 0, left: 0, width: 0, openUp: false });
   const selected = options.find((o) => o.value === value);
 
-  // Position the menu using fixed positioning (escapes overflow containers)
-  const positionMenu = useCallback(() => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
+  // Calculate position from trigger rect
+  const updatePos = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
-    const menuHeight = Math.min(options.length * 32 + 8, 260);
-    const openAbove = spaceBelow < menuHeight && rect.top > menuHeight;
-    setMenuStyle({
-      position: "fixed",
+    const menuHeight = Math.min(options.length * 34 + 10, 260);
+    const openUp = spaceBelow < menuHeight && rect.top > menuHeight;
+    setPos({
+      top: openUp ? rect.top - menuHeight - 4 : rect.bottom + 4,
       left: rect.left,
       width: Math.max(rect.width, 120),
-      ...(openAbove
-        ? { bottom: window.innerHeight - rect.top + 4 }
-        : { top: rect.bottom + 4 }),
-      zIndex: 9999,
+      openUp,
     });
   }, [options.length]);
 
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
-    positionMenu();
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node) &&
-          menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      if (wrapRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
-    const onScroll = () => setOpen(false);
     document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // Reposition on scroll/resize while open
+  useEffect(() => {
+    if (!open) return;
+    updatePos();
+    const onScroll = () => updatePos();
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
     return () => {
-      document.removeEventListener("mousedown", handler);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
     };
-  }, [open, positionMenu]);
+  }, [open, updatePos]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); }
@@ -160,11 +164,12 @@ function CustomSelect({ value, onChange, options, disabled, className = "", size
   const sizeClass = size === "sm" ? "csel-sm" : "csel-md";
 
   return (
-    <div ref={ref} className={`csel ${sizeClass} ${className} ${disabled ? "csel-disabled" : ""}`}>
+    <div ref={wrapRef} className={`csel ${sizeClass} ${className} ${disabled ? "csel-disabled" : ""}`}>
       <button
+        ref={triggerRef}
         type="button"
         className="csel-trigger"
-        onClick={() => { if (!disabled) { positionMenu(); setOpen(!open); } }}
+        onClick={() => { if (!disabled) { updatePos(); setOpen(!open); } }}
         onKeyDown={onKeyDown}
         tabIndex={0}
         aria-haspopup="listbox"
@@ -174,7 +179,18 @@ function CustomSelect({ value, onChange, options, disabled, className = "", size
         <svg className={`csel-chevron ${open ? "csel-chevron-open" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
       {open && typeof document !== "undefined" && createPortal(
-        <div ref={menuRef} className={`csel-menu ${sizeClass}`} role="listbox" style={menuStyle}>
+        <div
+          ref={menuRef}
+          className={`csel-menu ${sizeClass}`}
+          role="listbox"
+          style={{
+            position: "fixed",
+            top: pos.top,
+            left: pos.left,
+            minWidth: pos.width,
+            zIndex: 9999,
+          }}
+        >
           {options.map((opt) => (
             <div
               key={opt.value}
@@ -190,7 +206,7 @@ function CustomSelect({ value, onChange, options, disabled, className = "", size
             </div>
           ))}
         </div>,
-        document.body
+        document.body,
       )}
     </div>
   );
@@ -437,7 +453,7 @@ function Index() {
         </div>
 
         {/* ── Controls ── */}
-        <div className="glass-card controls-bar mb-5 flex flex-wrap items-center gap-3 px-5 py-3" style={{ position: "relative", zIndex: 30 }}>
+        <div className="glass-card controls-bar mb-5 flex flex-wrap items-center gap-3 px-5 py-3">
           <label className="text-xs font-semibold" style={{ color: "var(--warm-muted)" }}>Timeframe</label>
           <CustomSelect
             value={tf}
