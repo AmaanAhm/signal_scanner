@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
-import { createPortal } from "react-dom";
 import { useServerFn } from "@tanstack/react-start";
 import { FULL_UNIVERSE } from "@/lib/nse500";
 import { scanStock, checkRetestBatch, getQuotesBatch, simulatePaperTrade, type PaperTradeResult } from "@/lib/scanner.functions";
@@ -64,7 +63,7 @@ interface PaperTrade {
   dayPnl: (number | null)[];
 }
 
-const CONCURRENCY = 12;
+const CONCURRENCY = 8;
 
 function countTradingDays(start: Date, end: Date): number {
   let count = 0;
@@ -99,118 +98,6 @@ function SignalBadge({ signal }: { signal: "BUY" | "SELL" }) {
   return <span className={signal === "BUY" ? "badge-buy" : "badge-sell"}>{signal}</span>;
 }
 
-// ── Custom styled dropdown (no native <select>) — portal-based ──
-function CustomSelect({ value, onChange, options, disabled, className = "", size = "md" }: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  disabled?: boolean;
-  className?: string;
-  size?: "sm" | "md";
-}) {
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number; openUp: boolean }>({ top: 0, left: 0, width: 0, openUp: false });
-  const selected = options.find((o) => o.value === value);
-
-  // Calculate position from trigger rect
-  const updatePos = useCallback(() => {
-    if (!triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const menuHeight = Math.min(options.length * 34 + 10, 260);
-    const openUp = spaceBelow < menuHeight && rect.top > menuHeight;
-    setPos({
-      top: openUp ? rect.top - menuHeight - 4 : rect.bottom + 4,
-      left: rect.left,
-      width: Math.max(rect.width, 120),
-      openUp,
-    });
-  }, [options.length]);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (wrapRef.current?.contains(target)) return;
-      if (menuRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  // Reposition on scroll/resize while open
-  useEffect(() => {
-    if (!open) return;
-    updatePos();
-    const onScroll = () => updatePos();
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onScroll);
-    return () => {
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onScroll);
-    };
-  }, [open, updatePos]);
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); }
-    if (e.key === "Escape") setOpen(false);
-  };
-
-  const sizeClass = size === "sm" ? "csel-sm" : "csel-md";
-
-  return (
-    <div ref={wrapRef} className={`csel ${sizeClass} ${className} ${disabled ? "csel-disabled" : ""}`}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="csel-trigger"
-        onClick={() => { if (!disabled) { updatePos(); setOpen(!open); } }}
-        onKeyDown={onKeyDown}
-        tabIndex={0}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        <span className="csel-label">{selected?.label ?? value}</span>
-        <svg className={`csel-chevron ${open ? "csel-chevron-open" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-      </button>
-      {open && typeof document !== "undefined" && createPortal(
-        <div
-          ref={menuRef}
-          className={`csel-menu ${sizeClass}`}
-          role="listbox"
-          style={{
-            position: "fixed",
-            top: pos.top,
-            left: pos.left,
-            minWidth: pos.width,
-            zIndex: 9999,
-          }}
-        >
-          {options.map((opt) => (
-            <div
-              key={opt.value}
-              role="option"
-              aria-selected={opt.value === value}
-              className={`csel-option ${opt.value === value ? "csel-option-active" : ""}`}
-              onClick={() => { onChange(opt.value); setOpen(false); }}
-            >
-              {opt.label}
-              {opt.value === value && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-              )}
-            </div>
-          ))}
-        </div>,
-        document.body,
-      )}
-    </div>
-  );
-}
 // ── Main Page ──
 
 function Index() {
@@ -235,7 +122,7 @@ function Index() {
   const runningRef = useRef(false);
   const retestRefreshRef = useRef(false);
   const paperRef = useRef<PaperTradeRef>(null);
-  const [loadingTf, setLoadingTf] = useState(true);
+  const [loadingTf, setLoadingTf] = useState(false);
 
   // Load persisted scan results on mount / timeframe change.
   useEffect(() => {
@@ -277,7 +164,7 @@ function Index() {
         finally {
           done++;
           setProgress({ done, total: list.length });
-          if (done % 3 === 0 || done === list.length) setRows([...collected]);
+          if (done % 5 === 0 || done === list.length) setRows([...collected]);
         }
       }
     }
@@ -433,55 +320,45 @@ function Index() {
 
       <main className="mx-auto max-w-[1440px] page-pad px-6 py-6">
         {/* ── Stat Cards ── */}
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4 stagger-children">
+        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div className="stat-card">
             <div className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>Total Signals</div>
-            {loadingTf ? <div className="skeleton-bar mt-2" style={{ width: 60, height: 24 }} /> : <div className="mt-1 text-2xl font-bold mono" style={{ color: "var(--warm-text)" }}>{originals.length}</div>}
+            <div className="mt-1 text-2xl font-bold mono" style={{ color: "var(--warm-text)" }}>{originals.length}</div>
           </div>
           <div className="stat-card" style={{ borderColor: "var(--sage-border)" }}>
             <div className="text-xs font-medium text-profit">BUY Signals</div>
-            {loadingTf ? <div className="skeleton-bar mt-2" style={{ width: 50, height: 24 }} /> : <div className="mt-1 text-2xl font-bold mono text-profit">{buyCount}</div>}
+            <div className="mt-1 text-2xl font-bold mono text-profit">{buyCount}</div>
           </div>
           <div className="stat-card" style={{ borderColor: "var(--terra-border)" }}>
             <div className="text-xs font-medium text-loss">SELL Signals</div>
-            {loadingTf ? <div className="skeleton-bar mt-2" style={{ width: 50, height: 24 }} /> : <div className="mt-1 text-2xl font-bold mono text-loss">{sellCount}</div>}
+            <div className="mt-1 text-2xl font-bold mono text-loss">{sellCount}</div>
           </div>
           <div className="stat-card">
             <div className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>Retests</div>
-            {loadingTf ? <div className="skeleton-bar mt-2" style={{ width: 50, height: 24 }} /> : <div className="mt-1 text-2xl font-bold mono" style={{ color: "var(--sage)" }}>{retests.length}</div>}
+            <div className="mt-1 text-2xl font-bold mono" style={{ color: "var(--sage)" }}>{retests.length}</div>
           </div>
         </div>
 
         {/* ── Controls ── */}
         <div className="glass-card controls-bar mb-5 flex flex-wrap items-center gap-3 px-5 py-3">
           <label className="text-xs font-semibold" style={{ color: "var(--warm-muted)" }}>Timeframe</label>
-          <CustomSelect
-            value={tf}
-            onChange={(v) => setTf(v as Tf)}
-            disabled={running}
-            options={[
-              { value: "5m", label: "5 min" },
-              { value: "10m", label: "10 min" },
-              { value: "15m", label: "15 min" },
-              { value: "30m", label: "30 min" },
-              { value: "60m", label: "1 hour" },
-              { value: "2h", label: "2 hours" },
-              { value: "4h", label: "4 hours" },
-              { value: "1d", label: "1 day" },
-            ]}
-          />
+          <select className="ctrl-select" value={tf} onChange={(e) => setTf(e.target.value as Tf)} disabled={running}>
+            <option value="5m">5 min</option>
+            <option value="10m">10 min</option>
+            <option value="15m">15 min</option>
+            <option value="30m">30 min</option>
+            <option value="60m">1 hour</option>
+            <option value="2h">2 hours</option>
+            <option value="4h">4 hours</option>
+            <option value="1d">1 day</option>
+          </select>
           <label className="text-xs font-semibold" style={{ color: "var(--warm-muted)" }}>Show</label>
-          <CustomSelect
-            value={filter}
-            onChange={(v) => setFilter(v as "ALL" | "BUY" | "SELL")}
-            disabled={running}
-            options={[
-              { value: "ALL", label: "All" },
-              { value: "BUY", label: "BUY only" },
-              { value: "SELL", label: "SELL only" },
-            ]}
-          />
-          <input className="ctrl-input w-52" placeholder="Search stock or index…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select className="ctrl-select" value={filter} onChange={(e) => setFilter(e.target.value as "ALL" | "BUY" | "SELL")} disabled={running}>
+            <option value="ALL">All</option>
+            <option value="BUY">BUY only</option>
+            <option value="SELL">SELL only</option>
+          </select>
+          <input className="ctrl-input w-52" placeholder="Search stock, index or crypto…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <label className="live-toggle ml-auto flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: "var(--warm-muted)" }}>
             <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-[oklch(0.48_0.10_160)]" />
             {autoRefresh && <span className="live-dot" />}
@@ -535,30 +412,9 @@ function Index() {
         {/* ── Tab Panels ── */}
         <div className="glass-card p-5">
           {loadingTf ? (
-            <div className="animate-fade-in">
-              {/* Skeleton: mimics signal table header */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="skeleton-bar" style={{ width: 200, height: 18 }} />
-                <div className="skeleton-bar" style={{ width: 40, height: 18 }} />
-              </div>
-              <div className="skeleton-bar mb-2" style={{ width: 300, height: 12 }} />
-              {/* Skeleton: mimics table rows */}
-              <div className="mt-4 rounded-lg overflow-hidden" style={{ border: "1px solid var(--warm-border)" }}>
-                {/* Header row */}
-                <div className="flex gap-2 px-4 py-3" style={{ background: "oklch(0.96 0.008 75)" }}>
-                  {[30, 80, 100, 50, 60, 70, 60, 55, 40, 40].map((w, i) => (
-                    <div key={i} className="skeleton-bar" style={{ width: w, height: 10 }} />
-                  ))}
-                </div>
-                {/* Data rows */}
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="flex gap-2 px-4 py-3" style={{ borderTop: "1px solid var(--warm-border)", animationDelay: `${i * 80}ms` }}>
-                    {[30, 80, 100, 50, 60, 70, 60, 55, 40, 40].map((w, j) => (
-                      <div key={j} className="skeleton-bar" style={{ width: w, height: 12 }} />
-                    ))}
-                  </div>
-                ))}
-              </div>
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div style={{ width: 32, height: 32, border: "3px solid var(--warm-border)", borderTopColor: "var(--sage)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              <span className="text-sm" style={{ color: "var(--warm-muted)" }}>Loading {tf} data…</span>
             </div>
           ) : (
             <>
@@ -567,8 +423,8 @@ function Index() {
               {activeTab === "retests" && <SignalTable title="All Retest Entries" subtitle="Every bar where price touched the exact Buy/Sell signal price." rows={retests} onAddTrade={paperRef.current?.addTrade} activeSymbols={activeSymbols} />}
             </>
           )}
-          <div style={{ display: activeTab === "paper" ? "block" : "none" }}><PaperTradePanel ref={paperRef} onActiveChange={setActiveSymbols} search={search} /></div>
-          <div style={{ display: activeTab === "backtest" ? "block" : "none" }}><BacktestPanel rows={rows} search={search} /></div>
+          <div style={{ display: activeTab === "paper" ? "block" : "none" }}><PaperTradePanel ref={paperRef} onActiveChange={setActiveSymbols} /></div>
+          <div style={{ display: activeTab === "backtest" ? "block" : "none" }}><BacktestPanel rows={rows} /></div>
         </div>
 
         {/* ── Footer ── */}
@@ -658,9 +514,9 @@ function SignalTable({ title, subtitle, rows, onAddTrade, activeSymbols }: {
               <th><input className={fInput} style={fStyle} placeholder="Filter…" value={f.symbol} onChange={(e) => set("symbol", e.target.value)} /></th>
               <th><input className={fInput} style={fStyle} placeholder="Filter…" value={f.name} onChange={(e) => set("name", e.target.value)} /></th>
               <th>
-                <CustomSelect size="sm" value={f.signal} onChange={(v) => set("signal", v)} options={[
-                  { value: "", label: "All" }, { value: "BUY", label: "BUY" }, { value: "SELL", label: "SELL" },
-                ]} />
+                <select className="ctrl-select w-full" style={{ ...fStyle, minWidth: 60 }} value={f.signal} onChange={(e) => set("signal", e.target.value as any)}>
+                  <option value="">All</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
+                </select>
               </th>
               <th><input className={fInput} style={fStyle} placeholder="YYYY-MM-DD" value={f.date} onChange={(e) => set("date", e.target.value)} /></th>
               <th><input className={fInput} style={fStyle} placeholder="HH:MM" value={f.time} onChange={(e) => set("time", e.target.value)} /></th>
@@ -683,16 +539,14 @@ function SignalTable({ title, subtitle, rows, onAddTrade, activeSymbols }: {
                 </div>
               </th>
               <th>
-                <CustomSelect size="sm" value={f.tf} onChange={(v) => set("tf", v)} options={[
-                  { value: "", label: "All" }, { value: "1m", label: "1m" }, { value: "5m", label: "5m" }, { value: "10m", label: "10m" },
-                  { value: "15m", label: "15m" }, { value: "30m", label: "30m" }, { value: "60m", label: "60m" },
-                  { value: "2h", label: "2h" }, { value: "4h", label: "4h" }, { value: "1d", label: "1d" },
-                ]} />
+                <select className="ctrl-select w-full" style={{ ...fStyle, minWidth: 50 }} value={f.tf} onChange={(e) => set("tf", e.target.value)}>
+                  <option value="">All</option><option value="1m">1m</option><option value="5m">5m</option><option value="10m">10m</option><option value="15m">15m</option><option value="30m">30m</option><option value="60m">60m</option><option value="2h">2h</option><option value="4h">4h</option><option value="1d">1d</option>
+                </select>
               </th>
               <th>
-                <CustomSelect size="sm" value={f.trend} onChange={(v) => set("trend", v)} options={[
-                  { value: "", label: "All" }, { value: "Bullish", label: "Bullish" }, { value: "Bearish", label: "Bearish" }, { value: "Neutral", label: "Neutral" },
-                ]} />
+                <select className="ctrl-select w-full" style={{ ...fStyle, minWidth: 60 }} value={f.trend} onChange={(e) => set("trend", e.target.value as any)}>
+                  <option value="">All</option><option value="Bullish">Bullish</option><option value="Bearish">Bearish</option><option value="Neutral">Neutral</option>
+                </select>
               </th>
               {onAddTrade && <th />}
             </tr>
@@ -782,7 +636,7 @@ function Top10Panel({ retestBuys, retestSells }: { retestBuys: FlatRow[]; retest
 
 export type PaperTradeRef = { addTrade: (stock: FlatRow) => void };
 
-const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<string>) => void; search: string }>(function PaperTradePanel({ onActiveChange, search }, ref) {
+const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<string>) => void }>(function PaperTradePanel({ onActiveChange }, ref) {
   const fetchQuotes = useServerFn(getQuotesBatch);
   const runSimulate = useServerFn(simulatePaperTrade);
   const dbSave = useServerFn(savePaperTrade);
@@ -799,9 +653,8 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
   const [loaded, setLoaded] = useState(false);
   const updatingRef = useRef(false);
 
-  const searchQ = search.trim().toLowerCase();
-  const openTrades = useMemo(() => trades.filter((t) => t.status === "Open" && (!searchQ || `${t.symbol} ${t.name}`.toLowerCase().includes(searchQ))), [trades, searchQ]);
-  const closedTrades = useMemo(() => trades.filter((t) => t.status === "Closed" && (!searchQ || `${t.symbol} ${t.name}`.toLowerCase().includes(searchQ))), [trades, searchQ]);
+  const openTrades = useMemo(() => trades.filter((t) => t.status === "Open"), [trades]);
+  const closedTrades = useMemo(() => trades.filter((t) => t.status === "Closed"), [trades]);
 
   // Load from MongoDB on mount.
   useEffect(() => {
@@ -1048,9 +901,9 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
 
 // ── Backtest Panel ──
 
-const BT_CONCURRENCY = 6;
+const BT_CONCURRENCY = 4;
 
-function BacktestPanel({ rows, search }: { rows: ScanRow[]; search: string }) {
+function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const runStock = useServerFn(backtestStock);
   const runAggregate = useServerFn(aggregateBacktest);
 
@@ -1149,11 +1002,8 @@ function BacktestPanel({ rows, search }: { rows: ScanRow[]; search: string }) {
 
   const sortedTrades = useMemo(() => {
     if (!result) return [];
-    const q = search.trim().toLowerCase();
-    return [...result.trades]
-      .filter((t) => !q || `${t.symbol} ${t.name}`.toLowerCase().includes(q))
-      .sort((a, b) => `${b.entryDate} ${b.entryTime}`.localeCompare(`${a.entryDate} ${a.entryTime}`));
-  }, [result, search]);
+    return [...result.trades].sort((a, b) => `${b.entryDate} ${b.entryTime}`.localeCompare(`${a.entryDate} ${a.entryTime}`));
+  }, [result]);
 
   const exportCSV = useCallback(() => {
     if (!sortedTrades.length || !result) return;
@@ -1210,51 +1060,51 @@ function BacktestPanel({ rows, search }: { rows: ScanRow[]; search: string }) {
             Entry on first retest of signal price. Exit at <strong>+{targetPct}% profit</strong> or <strong>-{stopLossPct}% stop loss</strong>.
           </p>
 
-           {/* Date Range + Timeframe + Run */}
+          {/* Date Range + Timeframe + Run */}
           <div className="mb-4 flex flex-wrap items-end gap-3">
-            <label className="text-xs font-medium flex items-center gap-2" style={{ color: "var(--warm-muted)" }}>
+            <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
               Date Range
-              <CustomSelect size="sm" value={dateRangeKey} onChange={setDateRangeKey} options={[
-                { value: "6m", label: "Last 6 Months" },
-                { value: "1y", label: "Last 1 Year" },
-                { value: "2y", label: "Last 2 Years" },
-                { value: "3y", label: "Last 3 Years" },
-                { value: "4y", label: "Last 4 Years" },
-                { value: "custom", label: "Custom Range" },
-              ]} />
+              <select value={dateRangeKey} onChange={(e) => setDateRangeKey(e.target.value)} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }}>
+                <option value="6m">Last 6 Months</option>
+                <option value="1y">Last 1 Year</option>
+                <option value="2y">Last 2 Years</option>
+                <option value="3y">Last 3 Years</option>
+                <option value="4y">Last 4 Years</option>
+                <option value="custom">Custom Range</option>
+              </select>
             </label>
-            <label className="text-xs font-medium flex items-center gap-2" style={{ color: "var(--warm-muted)" }}>
+            <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
               Timeframe
-              <CustomSelect size="sm" value={btTimeframe} onChange={(v) => setBtTimeframe(v as any)} options={[
-                { value: "5m", label: "5 Min" },
-                { value: "10m", label: "10 Min" },
-                { value: "15m", label: "15 Min" },
-                { value: "30m", label: "30 Min" },
-                { value: "60m", label: "1 Hour" },
-                { value: "2h", label: "2 Hours" },
-                { value: "4h", label: "4 Hours" },
-                { value: "1d", label: "1 Day" },
-              ]} />
+              <select value={btTimeframe} onChange={(e) => setBtTimeframe(e.target.value as any)} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }}>
+                <option value="5m">5 Min</option>
+                <option value="10m">10 Min</option>
+                <option value="15m">15 Min</option>
+                <option value="30m">30 Min</option>
+                <option value="60m">1 Hour</option>
+                <option value="2h">2 Hours</option>
+                <option value="4h">4 Hours</option>
+                <option value="1d">1 Day</option>
+              </select>
             </label>
-            <label className="text-xs font-medium flex items-center gap-2" style={{ color: "var(--warm-muted)" }}>
+            <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
               Target %
-              <CustomSelect size="sm" value={String(targetPct)} onChange={(v) => setTargetPct(Number(v))} options={
-                [1,2,3,4,5,6,7,8,9,10].map((v) => ({ value: String(v), label: `${v}%` }))
-              } />
+              <select value={targetPct} onChange={(e) => setTargetPct(Number(e.target.value))} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }}>
+                {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v}>{v}%</option>)}
+              </select>
             </label>
-            <label className="text-xs font-medium flex items-center gap-2" style={{ color: "var(--warm-muted)" }}>
+            <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
               Stop Loss %
-              <CustomSelect size="sm" value={String(stopLossPct)} onChange={(v) => setStopLossPct(Number(v))} options={
-                [1,2,3,4,5,6,7,8,9,10].map((v) => ({ value: String(v), label: `${v}%` }))
-              } />
+              <select value={stopLossPct} onChange={(e) => setStopLossPct(Number(e.target.value))} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }}>
+                {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v}>{v}%</option>)}
+              </select>
             </label>
             {dateRangeKey === "custom" && (
               <>
                 <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
-                  Start <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="ctrl-date ml-1" />
+                  Start <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="ml-1 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }} />
                 </label>
                 <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
-                  End <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="ctrl-date ml-1" />
+                  End <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="ml-1 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }} />
                 </label>
               </>
             )}

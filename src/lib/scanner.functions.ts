@@ -225,8 +225,9 @@ export const scanStock = createServerFn({ method: "POST" })
       // signalEpoch = candle OPEN time. A 30m candle at 10:15 spans 10:15–10:45.
       // Retests should only count AFTER the signal candle closes.
       const tfDurationMs: Record<string, number> = {
-        "1m": 60_000, "5m": 5 * 60_000, "15m": 15 * 60_000,
-        "30m": 30 * 60_000, "60m": 60 * 60_000, "1d": 24 * 3600_000,
+        "1m": 60_000, "5m": 5 * 60_000, "10m": 10 * 60_000, "15m": 15 * 60_000,
+        "30m": 30 * 60_000, "60m": 60 * 60_000, "2h": 2 * 3600_000,
+        "4h": 4 * 3600_000, "1d": 24 * 3600_000,
       };
       const signalCandleEnd = signalEpoch + (tfDurationMs[data.timeframe] || 30 * 60_000);
 

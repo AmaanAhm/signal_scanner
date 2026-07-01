@@ -232,28 +232,22 @@ export const backtestStock = createServerFn({ method: "POST" })
 
       const lorentzResult = runLorentzian(bars);
 
-      // ── Step 2: Extract BUY + SELL signals ──
-      const signals: { price: number; time: number; date: string; timeStr: string; dir: "BUY" | "SELL" }[] = [];
+      // ── Step 2: Extract BUY signals ──
+      const signals: { price: number; time: number; date: string; timeStr: string }[] = [];
       for (const sig of lorentzResult.signals) {
-        if (sig.source !== "Original") continue;
+        if (sig.source !== "Original" || sig.signal !== "BUY") continue;
         const bar = bars[sig.index];
         const { date, time } = formatIST(bar.time);
         if (tf !== "1d") {
           const hour = parseInt(time.slice(0, 2), 10);
-          if (hour < 9 || hour >= 16) continue; // market hours filter
+          if (hour < 12) continue;
         }
         signals.push({
           price: bar.close,
           time: bar.time,
           date,
           timeStr: tf === "1d" ? "Intraday" : time,
-          dir: sig.signal as "BUY" | "SELL",
         });
-      }
-
-      // Debug logging
-      if (data.symbol === "RELIANCE.NS" || signals.length > 0) {
-        console.log(`[BT] ${data.symbol} tf=${tf}: bars=${bars.length} lorentzSignals=${lorentzResult.signals.length} origSignals=${signals.length}`);
       }
 
       if (signals.length === 0) return { entries: [] };
@@ -280,19 +274,11 @@ export const backtestStock = createServerFn({ method: "POST" })
           retestBars.push({ open: q.open, high: q.high, low: q.low, close: q.close, volume: q.volume ?? 0, time });
         }
       } catch {
-        retestBars = [];
+        // If fine TF fetch fails, fall back to signal TF bars
+        retestBars = bars;
       }
 
-      // If intraday retest bars don't cover older signals, merge with signal-TF bars
-      if (retestBars.length === 0) {
-        retestBars = bars;
-      } else {
-        const retestStart = retestBars[0].time;
-        const olderBars = bars.filter((b) => b.time < retestStart);
-        if (olderBars.length > 0) {
-          retestBars = [...olderBars, ...retestBars];
-        }
-      }
+      if (retestBars.length === 0) retestBars = bars;
 
       // ── Step 4: Walk through retest bars for entry + exit ──
       const rangeStart = period1.getTime();
@@ -301,7 +287,7 @@ export const backtestStock = createServerFn({ method: "POST" })
       // Sort signals chronologically
       signals.sort((a, b) => a.time - b.time);
 
-      let pending: { price: number; time: number; date: string; timeStr: string; dir: "BUY" | "SELL" } | null = null;
+      let pending: { price: number; time: number; date: string; timeStr: string } | null = null;
       let sigIdx = 0;
 
       for (let i = 0; i < retestBars.length; i++) {
@@ -319,7 +305,6 @@ export const backtestStock = createServerFn({ method: "POST" })
           if (touching) {
             const { date: rtDate, time: rtTime } = formatIST(bar.time);
             const entryPrice = pending.price;
-            const dir = pending.dir;
 
             // ── Calculate exit: walk forward until target or stoploss ──
             let exitType: "TARGET" | "STOPLOSS" = "STOPLOSS";
@@ -329,7 +314,7 @@ export const backtestStock = createServerFn({ method: "POST" })
             let holdingMinutes = 0;
 
             // Check the retest bar itself first
-            const hitEntry = checkExitOnBar(dir, entryPrice, bar, TARGET_PCT, SL_PCT);
+            const hitEntry = checkExitOnBar("BUY", entryPrice, bar, TARGET_PCT, SL_PCT);
             if (hitEntry) {
               exitType = hitEntry.type;
               exitPrice = hitEntry.price;
@@ -343,7 +328,7 @@ export const backtestStock = createServerFn({ method: "POST" })
                 const fBar = retestBars[k];
                 const { date: fDate, time: fTime } = formatIST(fBar.time);
 
-                const hitFwd = checkExitOnBar(dir, entryPrice, fBar, TARGET_PCT, SL_PCT);
+                const hitFwd = checkExitOnBar("BUY", entryPrice, fBar, TARGET_PCT, SL_PCT);
                 if (hitFwd) {
                   exitType = hitFwd.type;
                   exitPrice = hitFwd.price;
@@ -362,15 +347,14 @@ export const backtestStock = createServerFn({ method: "POST" })
               }
             }
 
-            // Calculate P&L (direction-aware)
-            const rawPnl = exitPrice - entryPrice;
-            const pnl = dir === "BUY" ? rawPnl : -rawPnl;
+            // Calculate P&L
+            const pnl = exitPrice - entryPrice;
             const pnlPct = (pnl / entryPrice) * 100;
 
             entries.push({
               symbol: data.symbol,
               name: data.name,
-              direction: dir,
+              direction: "BUY",
               signalDate: pending.date,
               signalTime: pending.timeStr,
               signalPrice: pending.price,
