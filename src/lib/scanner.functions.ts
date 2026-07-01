@@ -79,7 +79,7 @@ async function fetchYahoo(symbol: string, tf: Timeframe): Promise<Bar[]> {
   const result = await yf.chart(symbol, {
     period1,
     interval: yahooInterval as any,
-  }, { validateResult: false });
+  }, { validateResult: false }) as any;
 
   const bars: Bar[] = [];
   for (const q of result.quotes) {
@@ -239,7 +239,7 @@ export const scanStock = createServerFn({ method: "POST" })
           const fineResult = await yf.chart(data.symbol, {
             period1: new Date(signalEpoch),
             interval: fineInterval as "1m" | "5m",
-          }, { validateResult: false });
+          }, { validateResult: false }) as any;
 
           let wasTouching = false; // track consecutive touches
           for (const q of fineResult.quotes) {
