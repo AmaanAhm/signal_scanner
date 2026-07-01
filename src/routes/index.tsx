@@ -1064,11 +1064,11 @@ function BacktestPanel({ rows, search }: { rows: ScanRow[]; search: string }) {
             Entry on first retest of signal price. Exit at <strong>+{targetPct}% profit</strong> or <strong>-{stopLossPct}% stop loss</strong>.
           </p>
 
-          {/* Date Range + Timeframe + Run */}
+           {/* Date Range + Timeframe + Run */}
           <div className="mb-4 flex flex-wrap items-end gap-3">
             <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
               Date Range
-              <select value={dateRangeKey} onChange={(e) => setDateRangeKey(e.target.value)} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }}>
+              <select value={dateRangeKey} onChange={(e) => setDateRangeKey(e.target.value)} className="ctrl-select-sm ml-2">
                 <option value="6m">Last 6 Months</option>
                 <option value="1y">Last 1 Year</option>
                 <option value="2y">Last 2 Years</option>
@@ -1079,7 +1079,7 @@ function BacktestPanel({ rows, search }: { rows: ScanRow[]; search: string }) {
             </label>
             <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
               Timeframe
-              <select value={btTimeframe} onChange={(e) => setBtTimeframe(e.target.value as any)} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }}>
+              <select value={btTimeframe} onChange={(e) => setBtTimeframe(e.target.value as any)} className="ctrl-select-sm ml-2">
                 <option value="5m">5 Min</option>
                 <option value="10m">10 Min</option>
                 <option value="15m">15 Min</option>
@@ -1092,23 +1092,23 @@ function BacktestPanel({ rows, search }: { rows: ScanRow[]; search: string }) {
             </label>
             <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
               Target %
-              <select value={targetPct} onChange={(e) => setTargetPct(Number(e.target.value))} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }}>
+              <select value={targetPct} onChange={(e) => setTargetPct(Number(e.target.value))} className="ctrl-select-sm ml-2">
                 {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v}>{v}%</option>)}
               </select>
             </label>
             <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
               Stop Loss %
-              <select value={stopLossPct} onChange={(e) => setStopLossPct(Number(e.target.value))} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }}>
+              <select value={stopLossPct} onChange={(e) => setStopLossPct(Number(e.target.value))} className="ctrl-select-sm ml-2">
                 {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v}>{v}%</option>)}
               </select>
             </label>
             {dateRangeKey === "custom" && (
               <>
                 <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
-                  Start <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="ml-1 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }} />
+                  Start <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="ctrl-date ml-1" />
                 </label>
                 <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
-                  End <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="ml-1 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }} />
+                  End <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="ctrl-date ml-1" />
                 </label>
               </>
             )}
