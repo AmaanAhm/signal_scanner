@@ -301,14 +301,9 @@ export const backtestStock = createServerFn({ method: "POST" })
               }
 
               if (!found) {
-                const lastBar = retestBars[retestBars.length - 1];
-                const { date: lDate, time: lTime } = formatIST(lastBar.time);
-                exitPrice = lastBar.close;
-                exitTime = lTime;
-                exitDate = lDate;
-                const pnlCheck = exitPrice - entryPrice;
-                exitType = pnlCheck >= 0 ? "TARGET" : "STOPLOSS";
-                holdingMinutes = Math.round((lastBar.time - bar.time) / 60000);
+                // Trade never hit target or stoploss — still open, skip it
+                pending = null;
+                continue;
               }
             }
 

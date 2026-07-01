@@ -4,84 +4,101 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* ══════════════════════════════════════════════════════
-   Signal Scanner Pro — Japandi Interior Design Theme
-   Warm sand, linen, sage green, terracotta, dusty gold
-   ══════════════════════════════════════════════════════ */
-
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* ── Warm palette ── */
+/* ── Light trading terminal ── */
 :root {
-  --radius: 0.75rem;
-
-  /* Linen / sand base */
-  --background: oklch(0.955 0.012 80);
-  --foreground: oklch(0.22 0.02 55);
-
-  /* Cream cards */
-  --card: oklch(0.985 0.008 80);
-  --card-foreground: oklch(0.22 0.02 55);
-
-  /* Sage green primary */
-  --primary: oklch(0.52 0.10 155);
-  --primary-foreground: oklch(0.99 0.005 90);
-
-  /* Warm muted */
-  --muted: oklch(0.93 0.012 75);
-  --muted-foreground: oklch(0.50 0.02 60);
-
-  /* Warm border */
-  --border: oklch(0.87 0.018 75);
-  --input: oklch(0.87 0.018 75);
-  --ring: oklch(0.52 0.10 155);
-
-  /* Semantic */
-  --sage: oklch(0.52 0.10 155);
-  --sage-light: oklch(0.92 0.04 155);
-  --terracotta: oklch(0.55 0.14 35);
-  --terracotta-light: oklch(0.92 0.05 35);
-  --gold: oklch(0.58 0.12 80);
-  --gold-light: oklch(0.92 0.05 80);
-  --charcoal: oklch(0.25 0.015 55);
-  --linen: oklch(0.96 0.012 80);
-  --cream: oklch(0.985 0.008 80);
-  --warm-gray: oklch(0.50 0.02 60);
+  --radius: 0.625rem;
+  --background: oklch(0.985 0.002 250);
+  --foreground: oklch(0.18 0.03 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.03 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.03 260);
+  --primary: oklch(0.55 0.17 200);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.96 0.006 250);
+  --secondary-foreground: oklch(0.25 0.03 260);
+  --muted: oklch(0.96 0.006 250);
+  --muted-foreground: oklch(0.50 0.03 255);
+  --accent: oklch(0.96 0.006 250);
+  --accent-foreground: oklch(0.25 0.03 260);
+  --destructive: oklch(0.58 0.24 27);
+  --destructive-foreground: oklch(0.98 0.003 248);
+  --border: oklch(0.90 0.01 255);
+  --input: oklch(0.90 0.01 255);
+  --ring: oklch(0.55 0.17 200);
+  --chart-1: oklch(0.55 0.17 200);
+  --chart-2: oklch(0.55 0.15 160);
+  --chart-3: oklch(0.40 0.07 227);
+  --chart-4: oklch(0.75 0.17 84);
+  --chart-5: oklch(0.65 0.20 16);
+  --sidebar: oklch(0.98 0.003 250);
+  --sidebar-foreground: oklch(0.18 0.03 260);
+  --sidebar-primary: oklch(0.55 0.17 200);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.96 0.006 250);
+  --sidebar-accent-foreground: oklch(0.25 0.03 260);
+  --sidebar-border: oklch(0.90 0.01 255);
+  --sidebar-ring: oklch(0.55 0.17 200);
 }
 
 @layer base {
   * {
-    border-color: var(--border);
+    border-color: var(--color-border);
   }
 
   body {
-    background-color: var(--background);
-    color: var(--foreground);
-    font-family: "Inter", "DM Sans", system-ui, -apple-system, sans-serif;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    line-height: 1.6;
   }
 }
 
-/* ── Custom scrollbar (warm) ── */
+/* ── Custom scrollbar ── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -90,78 +107,72 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.78 0.015 75);
+  background: oklch(0.78 0.01 255);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.65 0.02 75);
+  background: oklch(0.65 0.02 255);
 }
 
-/* ── Glass card (warm cream with subtle warm shadow) ── */
+/* ── Glass card (light mode: white with subtle shadow) ── */
 .glass-card {
-  background: var(--cream);
-  border: 1px solid oklch(0.88 0.015 75);
-  border-radius: 16px;
-  box-shadow:
-    0 1px 3px oklch(0.45 0.03 60 / 5%),
-    0 8px 24px oklch(0.45 0.03 60 / 4%);
-  transition: box-shadow 0.3s ease;
+  background: oklch(1 0 0 / 80%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid oklch(0.88 0.01 255);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px oklch(0 0 0 / 4%), 0 4px 12px oklch(0 0 0 / 3%);
 }
 
 /* ── Gradient accents ── */
-.gradient-sage {
-  background: linear-gradient(135deg, oklch(0.55 0.12 155), oklch(0.48 0.10 165));
+.gradient-cyan {
+  background: linear-gradient(135deg, oklch(0.62 0.16 200), oklch(0.55 0.18 185));
 }
-.gradient-terracotta {
-  background: linear-gradient(135deg, oklch(0.58 0.14 35), oklch(0.50 0.12 28));
+.gradient-green {
+  background: linear-gradient(135deg, oklch(0.55 0.17 150), oklch(0.48 0.15 160));
 }
-.gradient-gold {
-  background: linear-gradient(135deg, oklch(0.62 0.12 80), oklch(0.55 0.10 70));
-}
-.gradient-warm {
-  background: linear-gradient(135deg, oklch(0.60 0.06 55), oklch(0.50 0.05 50));
+.gradient-red {
+  background: linear-gradient(135deg, oklch(0.55 0.22 25), oklch(0.48 0.20 15));
 }
 
 /* ── Signal badges ── */
 .badge-buy {
-  background: oklch(0.52 0.10 155 / 10%);
-  color: oklch(0.42 0.10 155);
-  border: 1px solid oklch(0.52 0.10 155 / 20%);
-  padding: 3px 12px;
-  border-radius: 8px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  background: oklch(0.55 0.17 150 / 10%);
+  color: oklch(0.45 0.16 150);
+  border: 1px solid oklch(0.55 0.17 150 / 22%);
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 .badge-sell {
-  background: oklch(0.55 0.14 35 / 10%);
-  color: oklch(0.48 0.14 35);
-  border: 1px solid oklch(0.55 0.14 35 / 20%);
-  padding: 3px 12px;
-  border-radius: 8px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  background: oklch(0.55 0.22 25 / 10%);
+  color: oklch(0.50 0.20 25);
+  border: 1px solid oklch(0.55 0.22 25 / 22%);
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 .badge-open {
-  background: oklch(0.58 0.12 80 / 12%);
-  color: oklch(0.48 0.10 80);
-  border: 1px solid oklch(0.58 0.12 80 / 22%);
-  padding: 3px 12px;
-  border-radius: 8px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  background: oklch(0.55 0.15 250 / 10%);
+  color: oklch(0.48 0.13 250);
+  border: 1px solid oklch(0.55 0.15 250 / 22%);
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 .badge-closed {
-  background: oklch(0.50 0.02 60 / 10%);
-  color: oklch(0.45 0.02 60);
-  border: 1px solid oklch(0.50 0.02 60 / 18%);
-  padding: 3px 12px;
-  border-radius: 8px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  background: oklch(0.55 0.02 255 / 10%);
+  color: oklch(0.50 0.02 255);
+  border: 1px solid oklch(0.55 0.02 255 / 22%);
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 /* ── Trading table ── */
@@ -172,131 +183,110 @@
   border-spacing: 0;
 }
 .trading-table thead th {
-  background: oklch(0.94 0.012 78);
-  padding: 12px 14px;
-  font-weight: 700;
-  font-size: 0.68rem;
+  background: oklch(0.97 0.004 250);
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: oklch(0.42 0.025 60);
-  border-bottom: 2px solid oklch(0.87 0.018 75);
+  letter-spacing: 0.06em;
+  color: oklch(0.48 0.03 255);
+  border-bottom: 1px solid oklch(0.88 0.01 255);
   position: sticky;
   top: 0;
   z-index: 1;
 }
 .trading-table tbody tr {
-  border-bottom: 1px solid oklch(0.91 0.01 78);
-  transition: all 0.2s ease;
+  border-bottom: 1px solid oklch(0.93 0.005 255);
+  transition: background 0.15s ease;
 }
 .trading-table tbody tr:hover {
-  background: oklch(0.95 0.02 155 / 30%);
-  transform: scale(1.001);
+  background: oklch(0.96 0.008 200 / 50%);
 }
 .trading-table tbody tr:nth-child(even) {
-  background: oklch(0.965 0.008 78);
+  background: oklch(0.975 0.003 250);
 }
 .trading-table tbody tr:nth-child(even):hover {
-  background: oklch(0.95 0.02 155 / 30%);
+  background: oklch(0.96 0.008 200 / 50%);
 }
 .trading-table td {
-  padding: 11px 14px;
+  padding: 10px 14px;
   vertical-align: middle;
 }
 
 /* ── Stat cards ── */
 .stat-card {
-  background: var(--cream);
-  border: 1px solid oklch(0.87 0.018 75);
-  border-radius: 16px;
-  padding: 20px 24px;
-  transition: all 0.25s ease;
-  box-shadow: 0 2px 8px oklch(0.45 0.03 60 / 5%);
-  position: relative;
-  overflow: hidden;
-}
-.stat-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, oklch(0.52 0.10 155), oklch(0.58 0.12 80));
-  opacity: 0;
-  transition: opacity 0.25s ease;
+  background: oklch(1 0 0);
+  border: 1px solid oklch(0.90 0.01 255);
+  border-radius: 12px;
+  padding: 16px 20px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 1px 3px oklch(0 0 0 / 4%);
 }
 .stat-card:hover {
-  border-color: oklch(0.78 0.025 75);
-  box-shadow: 0 4px 20px oklch(0.45 0.03 60 / 8%);
-  transform: translateY(-2px);
-}
-.stat-card:hover::before {
-  opacity: 1;
+  border-color: oklch(0.80 0.02 255);
+  box-shadow: 0 4px 16px oklch(0 0 0 / 6%);
 }
 
-/* ── Progress bar ── */
-@keyframes progress-shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+/* ── Progress bar animation ── */
+@keyframes progress-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 .progress-bar {
-  height: 5px;
-  border-radius: 3px;
-  background: oklch(0.90 0.012 75);
+  height: 4px;
+  border-radius: 2px;
+  background: oklch(0.92 0.006 250);
   overflow: hidden;
 }
 .progress-bar-fill {
   height: 100%;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--sage), var(--gold), var(--sage));
+  border-radius: 2px;
+  background: linear-gradient(90deg, oklch(0.62 0.16 200), oklch(0.55 0.18 185), oklch(0.62 0.16 200));
   background-size: 200% 100%;
-  animation: progress-shimmer 2s ease-in-out infinite;
+  animation: progress-pulse 2s ease-in-out infinite;
   transition: width 0.3s ease;
 }
 
 /* ── Tab pills ── */
 .tab-pill {
-  padding: 8px 20px;
-  border-radius: 12px;
+  padding: 6px 16px;
+  border-radius: 8px;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: oklch(0.45 0.02 60);
-  transition: all 0.25s ease;
+  color: oklch(0.48 0.03 255);
+  transition: all 0.2s ease;
   cursor: pointer;
   border: 1px solid transparent;
   background: transparent;
-  white-space: nowrap;
 }
 .tab-pill:hover {
-  color: oklch(0.30 0.02 55);
-  background: oklch(0.92 0.015 78);
-  border-color: oklch(0.87 0.018 75);
+  color: oklch(0.25 0.02 255);
+  background: oklch(0.95 0.006 250);
 }
 .tab-pill-active {
-  color: oklch(0.99 0.005 90);
-  background: linear-gradient(135deg, oklch(0.52 0.10 155), oklch(0.48 0.09 160));
-  font-weight: 700;
-  border-color: oklch(0.52 0.10 155);
-  box-shadow: 0 3px 12px oklch(0.52 0.10 155 / 25%);
+  color: oklch(1 0 0);
+  background: oklch(0.55 0.17 200);
+  font-weight: 600;
+  border-color: oklch(0.55 0.17 200);
+  box-shadow: 0 2px 8px oklch(0.55 0.17 200 / 25%);
 }
 
 /* ── Scan button ── */
 .scan-button {
-  background: linear-gradient(135deg, oklch(0.55 0.12 155), oklch(0.48 0.10 165));
-  color: oklch(0.99 0.005 90);
+  background: linear-gradient(135deg, oklch(0.58 0.16 200), oklch(0.50 0.18 185));
+  color: oklch(1 0 0);
   font-weight: 700;
-  padding: 10px 28px;
-  border-radius: 12px;
+  padding: 8px 24px;
+  border-radius: 10px;
   font-size: 0.875rem;
-  transition: all 0.25s ease;
+  transition: all 0.2s ease;
   border: none;
   cursor: pointer;
-  letter-spacing: 0.02em;
-  box-shadow: 0 2px 8px oklch(0.52 0.10 155 / 20%);
+  letter-spacing: 0.01em;
 }
 .scan-button:hover:not(:disabled) {
-  box-shadow: 0 4px 16px oklch(0.52 0.10 155 / 30%), 0 2px 6px oklch(0 0 0 / 8%);
-  transform: translateY(-2px);
+  box-shadow: 0 2px 12px oklch(0.55 0.17 200 / 30%), 0 4px 8px oklch(0 0 0 / 10%);
+  transform: translateY(-1px);
 }
 .scan-button:active:not(:disabled) {
   transform: translateY(0);
@@ -308,66 +298,65 @@
 
 /* ── Control select ── */
 .ctrl-select {
-  background: var(--cream);
-  border: 1px solid oklch(0.87 0.018 75);
-  color: oklch(0.25 0.02 55);
-  padding: 9px 14px;
-  border-radius: 10px;
+  background: oklch(1 0 0);
+  border: 1px solid oklch(0.88 0.01 255);
+  color: oklch(0.22 0.03 260);
+  padding: 7px 12px;
+  border-radius: 8px;
   font-size: 0.8125rem;
   font-family: "Inter", sans-serif;
   outline: none;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s;
 }
 .ctrl-select:focus {
-  border-color: var(--sage);
-  box-shadow: 0 0 0 3px oklch(0.52 0.10 155 / 10%);
+  border-color: oklch(0.55 0.17 200);
+  box-shadow: 0 0 0 2px oklch(0.55 0.17 200 / 12%);
 }
 
 /* ── Control input ── */
 .ctrl-input {
-  background: var(--cream);
-  border: 1px solid oklch(0.87 0.018 75);
-  color: oklch(0.25 0.02 55);
-  padding: 9px 16px;
-  border-radius: 10px;
+  background: oklch(1 0 0);
+  border: 1px solid oklch(0.88 0.01 255);
+  color: oklch(0.22 0.03 260);
+  padding: 7px 14px;
+  border-radius: 8px;
   font-size: 0.8125rem;
   font-family: "Inter", sans-serif;
   outline: none;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s;
 }
 .ctrl-input::placeholder {
-  color: oklch(0.58 0.02 70);
+  color: oklch(0.62 0.02 255);
 }
 .ctrl-input:focus {
-  border-color: var(--sage);
-  box-shadow: 0 0 0 3px oklch(0.52 0.10 155 / 10%);
+  border-color: oklch(0.55 0.17 200);
+  box-shadow: 0 0 0 2px oklch(0.55 0.17 200 / 12%);
 }
 
 /* ── Green / Red text ── */
 .text-profit {
-  color: oklch(0.48 0.12 155);
+  color: oklch(0.50 0.17 150);
 }
 .text-loss {
-  color: oklch(0.52 0.14 35);
+  color: oklch(0.55 0.22 25);
 }
 
 /* ── Action buttons ── */
 .btn-outline-sm {
-  padding: 5px 14px;
-  border-radius: 8px;
+  padding: 4px 12px;
+  border-radius: 6px;
   font-size: 0.75rem;
-  font-weight: 600;
-  border: 1px solid oklch(0.84 0.015 75);
-  color: oklch(0.42 0.025 60);
+  font-weight: 500;
+  border: 1px solid oklch(0.85 0.01 255);
+  color: oklch(0.45 0.03 255);
   background: transparent;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   cursor: pointer;
 }
 .btn-outline-sm:hover {
-  background: oklch(0.93 0.012 75);
-  border-color: oklch(0.75 0.02 75);
-  color: oklch(0.25 0.02 55);
-  transform: translateY(-1px);
+  background: oklch(0.96 0.006 250);
+  border-color: oklch(0.75 0.02 255);
+  color: oklch(0.25 0.02 255);
 }
 .btn-outline-sm:disabled {
   opacity: 0.4;
@@ -375,36 +364,35 @@
 }
 
 .btn-danger-sm {
-  padding: 5px 14px;
-  border-radius: 8px;
+  padding: 4px 12px;
+  border-radius: 6px;
   font-size: 0.75rem;
-  font-weight: 600;
-  border: 1px solid oklch(0.55 0.14 35 / 25%);
-  color: oklch(0.52 0.14 35);
-  background: oklch(0.55 0.14 35 / 6%);
-  transition: all 0.2s ease;
+  font-weight: 500;
+  border: 1px solid oklch(0.60 0.20 25 / 30%);
+  color: oklch(0.55 0.20 25);
+  background: oklch(0.60 0.20 25 / 6%);
+  transition: all 0.15s ease;
   cursor: pointer;
 }
 .btn-danger-sm:hover {
-  background: oklch(0.55 0.14 35 / 12%);
-  border-color: oklch(0.55 0.14 35 / 40%);
+  background: oklch(0.60 0.20 25 / 12%);
+  border-color: oklch(0.60 0.20 25 / 50%);
 }
 
 .btn-primary-sm {
-  padding: 5px 16px;
-  border-radius: 8px;
+  padding: 4px 14px;
+  border-radius: 6px;
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 600;
   border: none;
-  color: oklch(0.99 0.005 90);
-  background: var(--sage);
-  transition: all 0.2s ease;
+  color: oklch(1 0 0);
+  background: oklch(0.55 0.17 200);
+  transition: all 0.15s ease;
   cursor: pointer;
 }
 .btn-primary-sm:hover:not(:disabled) {
-  background: oklch(0.55 0.12 155);
-  box-shadow: 0 2px 10px oklch(0.52 0.10 155 / 20%);
-  transform: translateY(-1px);
+  background: oklch(0.60 0.16 200);
+  box-shadow: 0 2px 8px oklch(0.55 0.17 200 / 20%);
 }
 .btn-primary-sm:disabled {
   opacity: 0.35;
@@ -413,30 +401,29 @@
 
 /* ── Section headers ── */
 .section-title {
-  font-size: 1rem;
-  font-weight: 800;
-  color: var(--charcoal);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: oklch(0.20 0.02 260);
   display: flex;
   align-items: center;
-  gap: 10px;
-  letter-spacing: -0.01em;
+  gap: 8px;
 }
 .section-title .count {
   font-weight: 400;
-  color: var(--warm-gray);
+  color: oklch(0.50 0.03 255);
 }
 
-/* ── Pulse dot ── */
+/* ── Pulse dot for live ── */
 @keyframes live-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(1.4); }
+  50% { opacity: 0.5; transform: scale(1.3); }
 }
 .live-dot {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--sage);
+  background: oklch(0.55 0.17 200);
   animation: live-pulse 2s ease-in-out infinite;
   margin-right: 6px;
 }
@@ -453,6 +440,8 @@
 }
 
 /* ── Responsive ── */
+
+/* Scrollable tab row on small screens */
 .tab-row {
   display: flex;
   gap: 0.5rem;
@@ -467,20 +456,27 @@
 
 /* Mobile (<640px) */
 @media (max-width: 640px) {
+  /* Tighter page padding */
   .page-pad {
     padding-left: 1rem;
     padding-right: 1rem;
   }
+
+  /* Compact header */
   .page-pad.header-pad {
     padding-top: 0.75rem;
     padding-bottom: 0.75rem;
   }
+
+  /* Stat cards: smaller text */
   .stat-card {
-    padding: 14px 16px;
+    padding: 12px 14px;
   }
   .stat-card .text-2xl {
     font-size: 1.25rem;
   }
+
+  /* Controls stack vertically */
   .controls-bar {
     flex-direction: column;
     align-items: stretch !important;
@@ -497,11 +493,15 @@
   .controls-bar .live-toggle {
     margin-left: 0 !important;
   }
+
+  /* Tab pills: smaller */
   .tab-pill {
-    padding: 6px 14px;
+    padding: 5px 12px;
     font-size: 0.75rem;
     white-space: nowrap;
   }
+
+  /* Table: smaller cells */
   .trading-table {
     font-size: 0.6875rem;
   }
@@ -512,12 +512,18 @@
   .trading-table td {
     padding: 8px 8px;
   }
+
+  /* Glass cards tighter */
   .glass-card {
-    border-radius: 12px;
+    border-radius: 8px;
   }
+
+  /* Section titles */
   .section-title {
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
   }
+
+  /* Scan button full width */
   .scan-button {
     padding: 10px 20px;
     font-size: 0.8125rem;
@@ -530,6 +536,7 @@
     padding-left: 1.25rem;
     padding-right: 1.25rem;
   }
+
   .trading-table {
     font-size: 0.75rem;
   }
@@ -541,7 +548,7 @@
   }
 }
 
-/* Touch-friendly */
+/* Touch-friendly tap targets */
 @media (pointer: coarse) {
   .btn-primary-sm,
   .btn-outline-sm,
