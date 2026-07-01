@@ -423,8 +423,8 @@ function Index() {
               {activeTab === "retests" && <SignalTable title="All Retest Entries" subtitle="Every bar where price touched the exact Buy/Sell signal price." rows={retests} onAddTrade={paperRef.current?.addTrade} activeSymbols={activeSymbols} />}
             </>
           )}
-          <div style={{ display: activeTab === "paper" ? "block" : "none" }}><PaperTradePanel ref={paperRef} onActiveChange={setActiveSymbols} /></div>
-          <div style={{ display: activeTab === "backtest" ? "block" : "none" }}><BacktestPanel rows={rows} /></div>
+          <div style={{ display: activeTab === "paper" ? "block" : "none" }}><PaperTradePanel ref={paperRef} onActiveChange={setActiveSymbols} search={search} /></div>
+          <div style={{ display: activeTab === "backtest" ? "block" : "none" }}><BacktestPanel rows={rows} search={search} /></div>
         </div>
 
         {/* ── Footer ── */}
@@ -636,7 +636,7 @@ function Top10Panel({ retestBuys, retestSells }: { retestBuys: FlatRow[]; retest
 
 export type PaperTradeRef = { addTrade: (stock: FlatRow) => void };
 
-const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<string>) => void }>(function PaperTradePanel({ onActiveChange }, ref) {
+const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<string>) => void; search: string }>(function PaperTradePanel({ onActiveChange, search }, ref) {
   const fetchQuotes = useServerFn(getQuotesBatch);
   const runSimulate = useServerFn(simulatePaperTrade);
   const dbSave = useServerFn(savePaperTrade);
@@ -653,8 +653,9 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
   const [loaded, setLoaded] = useState(false);
   const updatingRef = useRef(false);
 
-  const openTrades = useMemo(() => trades.filter((t) => t.status === "Open"), [trades]);
-  const closedTrades = useMemo(() => trades.filter((t) => t.status === "Closed"), [trades]);
+  const searchQ = search.trim().toLowerCase();
+  const openTrades = useMemo(() => trades.filter((t) => t.status === "Open" && (!searchQ || `${t.symbol} ${t.name}`.toLowerCase().includes(searchQ))), [trades, searchQ]);
+  const closedTrades = useMemo(() => trades.filter((t) => t.status === "Closed" && (!searchQ || `${t.symbol} ${t.name}`.toLowerCase().includes(searchQ))), [trades, searchQ]);
 
   // Load from MongoDB on mount.
   useEffect(() => {
@@ -903,7 +904,7 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
 
 const BT_CONCURRENCY = 6;
 
-function BacktestPanel({ rows }: { rows: ScanRow[] }) {
+function BacktestPanel({ rows, search }: { rows: ScanRow[]; search: string }) {
   const runStock = useServerFn(backtestStock);
   const runAggregate = useServerFn(aggregateBacktest);
 
@@ -1002,8 +1003,11 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
 
   const sortedTrades = useMemo(() => {
     if (!result) return [];
-    return [...result.trades].sort((a, b) => `${b.entryDate} ${b.entryTime}`.localeCompare(`${a.entryDate} ${a.entryTime}`));
-  }, [result]);
+    const q = search.trim().toLowerCase();
+    return [...result.trades]
+      .filter((t) => !q || `${t.symbol} ${t.name}`.toLowerCase().includes(q))
+      .sort((a, b) => `${b.entryDate} ${b.entryTime}`.localeCompare(`${a.entryDate} ${a.entryTime}`));
+  }, [result, search]);
 
   const exportCSV = useCallback(() => {
     if (!sortedTrades.length || !result) return;
