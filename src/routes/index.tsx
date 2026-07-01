@@ -63,7 +63,7 @@ interface PaperTrade {
   dayPnl: (number | null)[];
 }
 
-const CONCURRENCY = 8;
+const CONCURRENCY = 12;
 
 function countTradingDays(start: Date, end: Date): number {
   let count = 0;
@@ -164,7 +164,7 @@ function Index() {
         finally {
           done++;
           setProgress({ done, total: list.length });
-          if (done % 5 === 0 || done === list.length) setRows([...collected]);
+          if (done % 3 === 0 || done === list.length) setRows([...collected]);
         }
       }
     }
@@ -320,7 +320,7 @@ function Index() {
 
       <main className="mx-auto max-w-[1440px] page-pad px-6 py-6">
         {/* ── Stat Cards ── */}
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4 stagger-children">
           <div className="stat-card">
             <div className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>Total Signals</div>
             <div className="mt-1 text-2xl font-bold mono" style={{ color: "var(--warm-text)" }}>{originals.length}</div>
@@ -901,7 +901,7 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
 
 // ── Backtest Panel ──
 
-const BT_CONCURRENCY = 4;
+const BT_CONCURRENCY = 6;
 
 function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const runStock = useServerFn(backtestStock);
