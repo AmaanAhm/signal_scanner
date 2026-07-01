@@ -998,9 +998,9 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
 
   const exportCSV = useCallback(() => {
     if (!sortedTrades.length || !result) return;
-    const header = "#,Symbol,Dir,Company,Entry Date,Entry Time,Entry ₹,Exit Type,Exit Date,Exit Time,Exit ₹,P&L (₹),P&L (%),Result";
+    const header = "#,Symbol,Dir,Company,Signal Date,Signal Time,Entry Date,Entry Time,Entry ₹,Exit Type,Exit Date,Exit Time,Exit ₹,P&L (₹),P&L (%),Result";
     const rows = sortedTrades.map((t, i) =>
-      `${i + 1},${t.symbol.replace(".NS", "")},${t.direction},"${t.name}",${t.entryDate},${t.entryTime},${t.entryPrice.toFixed(2)},${t.exitType},${t.exitDate},${t.exitTime},${t.exitPrice.toFixed(2)},${t.pnl.toFixed(2)},${t.pnlPct}%,${t.win ? "WIN" : "LOSS"}`
+      `${i + 1},${t.symbol.replace(".NS", "")},${t.direction},"${t.name}",${t.signalDate},${t.signalTime},${t.entryDate},${t.entryTime},${t.entryPrice.toFixed(2)},${t.exitType},${t.exitDate},${t.exitTime},${t.exitPrice.toFixed(2)},${t.pnl.toFixed(2)},${t.pnlPct}%,${t.win ? "WIN" : "LOSS"}`
     );
     const s = result.summary;
     const summaryRows = [
@@ -1198,6 +1198,8 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                       <th className="text-left">Symbol</th>
                       <th className="text-center">Dir</th>
                       <th className="text-left">Company</th>
+                      <th className="text-left">Signal Date</th>
+                      <th className="text-left">Signal Time</th>
                       <th className="text-left">Entry Date</th>
                       <th className="text-left">Entry Time</th>
                       <th className="text-right">Entry ₹</th>
@@ -1212,7 +1214,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                   </thead>
                   <tbody>
                     {sortedTrades.length === 0 ? (
-                      <tr><td colSpan={14} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No trades found.</td></tr>
+                      <tr><td colSpan={16} className="text-center py-8" style={{ color: "oklch(0.58 0.02 255)" }}>No trades found.</td></tr>
                     ) : (
                       sortedTrades.map((t, i) => (
                         <tr key={`${t.symbol}-${t.entryDate}-${i}`}>
@@ -1226,6 +1228,8 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
                             }}>{t.direction}</span>
                           </td>
                           <td className="text-xs" style={{ color: "oklch(0.45 0.02 255)" }}>{t.name}</td>
+                          <td className="mono text-xs" style={{ color: "oklch(0.55 0.12 270)" }}>{t.signalDate}</td>
+                          <td className="mono text-xs" style={{ color: "oklch(0.55 0.12 270)" }}>{t.signalTime}</td>
                           <td className="mono text-xs">{t.entryDate}</td>
                           <td className="mono text-xs">{t.entryTime}</td>
                           <td className="mono text-right">{t.entryPrice.toFixed(2)}</td>
