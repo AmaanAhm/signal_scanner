@@ -405,7 +405,7 @@ function Index() {
         </div>
 
         {/* ── Controls ── */}
-        <div className="glass-card controls-bar mb-5 flex flex-wrap items-center gap-3 px-5 py-3">
+        <div className="glass-card controls-bar mb-5 flex flex-wrap items-center gap-3 px-5 py-3" style={{ position: "relative", zIndex: 30 }}>
           <label className="text-xs font-semibold" style={{ color: "var(--warm-muted)" }}>Timeframe</label>
           <CustomSelect
             value={tf}
@@ -610,9 +610,9 @@ function SignalTable({ title, subtitle, rows, onAddTrade, activeSymbols }: {
               <th><input className={fInput} style={fStyle} placeholder="Filter…" value={f.symbol} onChange={(e) => set("symbol", e.target.value)} /></th>
               <th><input className={fInput} style={fStyle} placeholder="Filter…" value={f.name} onChange={(e) => set("name", e.target.value)} /></th>
               <th>
-                <select className="ctrl-select w-full" style={{ ...fStyle, minWidth: 60 }} value={f.signal} onChange={(e) => set("signal", e.target.value as any)}>
-                  <option value="">All</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
-                </select>
+                <CustomSelect size="sm" value={f.signal} onChange={(v) => set("signal", v)} options={[
+                  { value: "", label: "All" }, { value: "BUY", label: "BUY" }, { value: "SELL", label: "SELL" },
+                ]} />
               </th>
               <th><input className={fInput} style={fStyle} placeholder="YYYY-MM-DD" value={f.date} onChange={(e) => set("date", e.target.value)} /></th>
               <th><input className={fInput} style={fStyle} placeholder="HH:MM" value={f.time} onChange={(e) => set("time", e.target.value)} /></th>
@@ -635,14 +635,16 @@ function SignalTable({ title, subtitle, rows, onAddTrade, activeSymbols }: {
                 </div>
               </th>
               <th>
-                <select className="ctrl-select w-full" style={{ ...fStyle, minWidth: 50 }} value={f.tf} onChange={(e) => set("tf", e.target.value)}>
-                  <option value="">All</option><option value="1m">1m</option><option value="5m">5m</option><option value="10m">10m</option><option value="15m">15m</option><option value="30m">30m</option><option value="60m">60m</option><option value="2h">2h</option><option value="4h">4h</option><option value="1d">1d</option>
-                </select>
+                <CustomSelect size="sm" value={f.tf} onChange={(v) => set("tf", v)} options={[
+                  { value: "", label: "All" }, { value: "1m", label: "1m" }, { value: "5m", label: "5m" }, { value: "10m", label: "10m" },
+                  { value: "15m", label: "15m" }, { value: "30m", label: "30m" }, { value: "60m", label: "60m" },
+                  { value: "2h", label: "2h" }, { value: "4h", label: "4h" }, { value: "1d", label: "1d" },
+                ]} />
               </th>
               <th>
-                <select className="ctrl-select w-full" style={{ ...fStyle, minWidth: 60 }} value={f.trend} onChange={(e) => set("trend", e.target.value as any)}>
-                  <option value="">All</option><option value="Bullish">Bullish</option><option value="Bearish">Bearish</option><option value="Neutral">Neutral</option>
-                </select>
+                <CustomSelect size="sm" value={f.trend} onChange={(v) => set("trend", v)} options={[
+                  { value: "", label: "All" }, { value: "Bullish", label: "Bullish" }, { value: "Bearish", label: "Bearish" }, { value: "Neutral", label: "Neutral" },
+                ]} />
               </th>
               {onAddTrade && <th />}
             </tr>
