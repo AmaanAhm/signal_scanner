@@ -3,7 +3,7 @@ import { runLorentzian, type LorentzianBarSignal } from "./lorentzian";
 import type { Bar } from "./indicators";
 import YahooFinance from "yahoo-finance2";
 
-export type Timeframe = "15m" | "30m" | "60m" | "1d";
+export type Timeframe = "5m" | "15m" | "30m" | "60m" | "1d";
 
 interface ScanInput {
   symbol: string;
@@ -33,6 +33,8 @@ interface ScanResult {
 
 function tfToYahoo(tf: Timeframe): { interval: string; rangeDays: number } {
   switch (tf) {
+    case "5m":
+      return { interval: "5m", rangeDays: 55 };
     case "15m":
       return { interval: "15m", rangeDays: 55 };
     case "30m":
@@ -54,7 +56,7 @@ async function fetchYahoo(symbol: string, tf: Timeframe): Promise<Bar[]> {
 
   const result = await yf.chart(symbol, {
     period1,
-    interval: interval as "1d" | "15m" | "30m" | "60m",
+    interval: interval as "1d" | "5m" | "15m" | "30m" | "60m",
   }, { validateResult: false });
 
 

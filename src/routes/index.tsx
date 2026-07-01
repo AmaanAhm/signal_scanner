@@ -158,7 +158,7 @@ function Index() {
         const item = queue.shift();
         if (!item) break;
         try {
-          const r = (await scan({ data: { symbol: item.symbol, name: item.name, timeframe: tf as "15m" | "30m" | "60m" | "1d" } })) as ScanRow;
+          const r = (await scan({ data: { symbol: item.symbol, name: item.name, timeframe: tf as "5m" | "15m" | "30m" | "60m" | "1d" } })) as ScanRow;
           if (r.original || (r.retests && r.retests.length > 0)) collected.push(r);
         } catch { /* ignore */ }
         finally {
@@ -343,6 +343,7 @@ function Index() {
         <div className="glass-card controls-bar mb-5 flex flex-wrap items-center gap-3 px-5 py-3">
           <label className="text-xs font-semibold" style={{ color: "oklch(0.48 0.03 255)" }}>Timeframe</label>
           <select className="ctrl-select" value={tf} onChange={(e) => setTf(e.target.value as Tf)} disabled={running}>
+            <option value="5m">5 min</option>
             <option value="15m">15 min</option>
             <option value="30m">30 min</option>
             <option value="60m">1 hour</option>
@@ -907,7 +908,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const [dateRangeKey, setDateRangeKey] = useState("1y");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const [btTimeframe, setBtTimeframe] = useState<"15m" | "30m" | "60m" | "1d">("1d");
+  const [btTimeframe, setBtTimeframe] = useState<"5m" | "15m" | "30m" | "60m" | "1d">("1d");
   const [targetPct, setTargetPct] = useState<number>(2);
   const [stopLossPct, setStopLossPct] = useState<number>(2);
   const [result, setResult] = useState<BacktestResult | null>(null);
@@ -1072,6 +1073,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
             <label className="text-xs font-medium" style={{ color: "oklch(0.40 0.03 255)" }}>
               Timeframe
               <select value={btTimeframe} onChange={(e) => setBtTimeframe(e.target.value as any)} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid oklch(0.85 0.02 255)" }}>
+                <option value="5m">5 Min</option>
                 <option value="15m">15 Min</option>
                 <option value="30m">30 Min</option>
                 <option value="60m">1 Hour</option>

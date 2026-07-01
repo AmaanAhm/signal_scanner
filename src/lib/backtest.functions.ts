@@ -140,6 +140,7 @@ function checkExitOnBar(
 
 // Retest resolution: use finer bars for accurate entry/exit timing
 const RETEST_TF: Record<string, string> = {
+  "5m": "5m",
   "15m": "5m",
   "30m": "5m",
   "60m": "15m",
@@ -152,7 +153,7 @@ const RETEST_MAX_DAYS: Record<string, number> = {
 };
 
 export const backtestStock = createServerFn({ method: "POST" })
-  .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "15m" | "30m" | "60m" | "1d"; targetPct?: number; stopLossPct?: number }) => input)
+  .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "5m" | "15m" | "30m" | "60m" | "1d"; targetPct?: number; stopLossPct?: number }) => input)
   .handler(async ({ data }): Promise<{ entries: BacktestEntry[]; error?: string }> => {
     try {
       const { period1 } = dateRangeToDays(data.dateRange);
@@ -161,6 +162,7 @@ export const backtestStock = createServerFn({ method: "POST" })
       const SL_PCT = (data.stopLossPct ?? 2) / 100;
 
       const tfConfig: Record<string, { maxDays: number; barsPerDay: number }> = {
+        "5m":  { maxDays: 55, barsPerDay: 75 },
         "15m": { maxDays: 55, barsPerDay: 26 },
         "30m": { maxDays: 55, barsPerDay: 13 },
         "60m": { maxDays: 700, barsPerDay: 7 },
@@ -178,7 +180,7 @@ export const backtestStock = createServerFn({ method: "POST" })
       // ── Step 1: Fetch signal TF data and run Lorentzian ──
       const result = await yf.chart(data.symbol, {
         period1: fetchStart,
-        interval: tf as "1d" | "15m" | "30m" | "60m",
+        interval: tf as "1d" | "5m" | "15m" | "30m" | "60m",
       }, { validateResult: false }) as any;
 
       const bars: Bar[] = [];
