@@ -903,32 +903,37 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const runStock = useServerFn(backtestStock);
   const runAggregate = useServerFn(aggregateBacktest);
 
-  const loadSaved = () => {
-    try {
-      const raw = typeof window !== "undefined" ? localStorage.getItem("bt_state") : null;
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        // Invalidate stale results from old schema (summaries[] → summary{})
-        if (parsed?.result && !parsed.result.summary) {
-          parsed.result = null;
-        }
-        return parsed;
-      }
-    } catch { /* ignore */ }
-    return null;
-  };
-  const saved = useRef(loadSaved());
-
-  const [enabled, setEnabled] = useState(saved.current?.enabled ?? false);
-  const [dateRangeKey, setDateRangeKey] = useState(saved.current?.dateRangeKey ?? "1y");
-  const [customStart, setCustomStart] = useState(saved.current?.customStart ?? "");
-  const [customEnd, setCustomEnd] = useState(saved.current?.customEnd ?? "");
-  const [btTimeframe, setBtTimeframe] = useState<"15m" | "30m" | "60m" | "1d">(saved.current?.btTimeframe ?? "1d");
-  const [targetPct, setTargetPct] = useState<number>(saved.current?.targetPct ?? 2);
-  const [stopLossPct, setStopLossPct] = useState<number>(saved.current?.stopLossPct ?? 2);
-  const [result, setResult] = useState<BacktestResult | null>(saved.current?.result ?? null);
+  const [enabled, setEnabled] = useState(false);
+  const [dateRangeKey, setDateRangeKey] = useState("1y");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [btTimeframe, setBtTimeframe] = useState<"15m" | "30m" | "60m" | "1d">("1d");
+  const [targetPct, setTargetPct] = useState<number>(2);
+  const [stopLossPct, setStopLossPct] = useState<number>(2);
+  const [result, setResult] = useState<BacktestResult | null>(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, phase: "" });
+  const hydrated = useRef(false);
+
+  // Hydrate saved state from localStorage after mount (avoids SSR mismatch)
+  useEffect(() => {
+    if (hydrated.current) return;
+    hydrated.current = true;
+    try {
+      const raw = localStorage.getItem("bt_state");
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.enabled != null) setEnabled(s.enabled);
+        if (s.dateRangeKey) setDateRangeKey(s.dateRangeKey);
+        if (s.customStart) setCustomStart(s.customStart);
+        if (s.customEnd) setCustomEnd(s.customEnd);
+        if (s.btTimeframe) setBtTimeframe(s.btTimeframe);
+        if (s.targetPct != null) setTargetPct(s.targetPct);
+        if (s.stopLossPct != null) setStopLossPct(s.stopLossPct);
+        if (s.result?.summary) setResult(s.result);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
