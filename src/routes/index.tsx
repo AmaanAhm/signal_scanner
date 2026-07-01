@@ -98,6 +98,71 @@ function SignalBadge({ signal }: { signal: "BUY" | "SELL" }) {
   return <span className={signal === "BUY" ? "badge-buy" : "badge-sell"}>{signal}</span>;
 }
 
+// ── Custom styled dropdown (no native <select>) ──
+function CustomSelect({ value, onChange, options, disabled, className = "", size = "md" }: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+  className?: string;
+  size?: "sm" | "md";
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.value === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // Keyboard support
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); }
+    if (e.key === "Escape") setOpen(false);
+  };
+
+  const sizeClass = size === "sm" ? "csel-sm" : "csel-md";
+
+  return (
+    <div ref={ref} className={`csel ${sizeClass} ${className} ${disabled ? "csel-disabled" : ""}`}>
+      <button
+        type="button"
+        className="csel-trigger"
+        onClick={() => !disabled && setOpen(!open)}
+        onKeyDown={onKeyDown}
+        tabIndex={0}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="csel-label">{selected?.label ?? value}</span>
+        <svg className={`csel-chevron ${open ? "csel-chevron-open" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {open && (
+        <div className="csel-menu" role="listbox">
+          {options.map((opt) => (
+            <div
+              key={opt.value}
+              role="option"
+              aria-selected={opt.value === value}
+              className={`csel-option ${opt.value === value ? "csel-option-active" : ""}`}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+            >
+              {opt.label}
+              {opt.value === value && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 // ── Main Page ──
 
 function Index() {
@@ -342,22 +407,32 @@ function Index() {
         {/* ── Controls ── */}
         <div className="glass-card controls-bar mb-5 flex flex-wrap items-center gap-3 px-5 py-3">
           <label className="text-xs font-semibold" style={{ color: "var(--warm-muted)" }}>Timeframe</label>
-          <select className="ctrl-select" value={tf} onChange={(e) => setTf(e.target.value as Tf)} disabled={running}>
-            <option value="5m">5 min</option>
-            <option value="10m">10 min</option>
-            <option value="15m">15 min</option>
-            <option value="30m">30 min</option>
-            <option value="60m">1 hour</option>
-            <option value="2h">2 hours</option>
-            <option value="4h">4 hours</option>
-            <option value="1d">1 day</option>
-          </select>
+          <CustomSelect
+            value={tf}
+            onChange={(v) => setTf(v as Tf)}
+            disabled={running}
+            options={[
+              { value: "5m", label: "5 min" },
+              { value: "10m", label: "10 min" },
+              { value: "15m", label: "15 min" },
+              { value: "30m", label: "30 min" },
+              { value: "60m", label: "1 hour" },
+              { value: "2h", label: "2 hours" },
+              { value: "4h", label: "4 hours" },
+              { value: "1d", label: "1 day" },
+            ]}
+          />
           <label className="text-xs font-semibold" style={{ color: "var(--warm-muted)" }}>Show</label>
-          <select className="ctrl-select" value={filter} onChange={(e) => setFilter(e.target.value as "ALL" | "BUY" | "SELL")} disabled={running}>
-            <option value="ALL">All</option>
-            <option value="BUY">BUY only</option>
-            <option value="SELL">SELL only</option>
-          </select>
+          <CustomSelect
+            value={filter}
+            onChange={(v) => setFilter(v as "ALL" | "BUY" | "SELL")}
+            disabled={running}
+            options={[
+              { value: "ALL", label: "All" },
+              { value: "BUY", label: "BUY only" },
+              { value: "SELL", label: "SELL only" },
+            ]}
+          />
           <input className="ctrl-input w-52" placeholder="Search stock or index…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <label className="live-toggle ml-auto flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: "var(--warm-muted)" }}>
             <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-[oklch(0.48_0.10_160)]" />
@@ -1087,41 +1162,41 @@ function BacktestPanel({ rows, search }: { rows: ScanRow[]; search: string }) {
 
            {/* Date Range + Timeframe + Run */}
           <div className="mb-4 flex flex-wrap items-end gap-3">
-            <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
+            <label className="text-xs font-medium flex items-center gap-2" style={{ color: "var(--warm-muted)" }}>
               Date Range
-              <select value={dateRangeKey} onChange={(e) => setDateRangeKey(e.target.value)} className="ctrl-select-sm ml-2">
-                <option value="6m">Last 6 Months</option>
-                <option value="1y">Last 1 Year</option>
-                <option value="2y">Last 2 Years</option>
-                <option value="3y">Last 3 Years</option>
-                <option value="4y">Last 4 Years</option>
-                <option value="custom">Custom Range</option>
-              </select>
+              <CustomSelect size="sm" value={dateRangeKey} onChange={setDateRangeKey} options={[
+                { value: "6m", label: "Last 6 Months" },
+                { value: "1y", label: "Last 1 Year" },
+                { value: "2y", label: "Last 2 Years" },
+                { value: "3y", label: "Last 3 Years" },
+                { value: "4y", label: "Last 4 Years" },
+                { value: "custom", label: "Custom Range" },
+              ]} />
             </label>
-            <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
+            <label className="text-xs font-medium flex items-center gap-2" style={{ color: "var(--warm-muted)" }}>
               Timeframe
-              <select value={btTimeframe} onChange={(e) => setBtTimeframe(e.target.value as any)} className="ctrl-select-sm ml-2">
-                <option value="5m">5 Min</option>
-                <option value="10m">10 Min</option>
-                <option value="15m">15 Min</option>
-                <option value="30m">30 Min</option>
-                <option value="60m">1 Hour</option>
-                <option value="2h">2 Hours</option>
-                <option value="4h">4 Hours</option>
-                <option value="1d">1 Day</option>
-              </select>
+              <CustomSelect size="sm" value={btTimeframe} onChange={(v) => setBtTimeframe(v as any)} options={[
+                { value: "5m", label: "5 Min" },
+                { value: "10m", label: "10 Min" },
+                { value: "15m", label: "15 Min" },
+                { value: "30m", label: "30 Min" },
+                { value: "60m", label: "1 Hour" },
+                { value: "2h", label: "2 Hours" },
+                { value: "4h", label: "4 Hours" },
+                { value: "1d", label: "1 Day" },
+              ]} />
             </label>
-            <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
+            <label className="text-xs font-medium flex items-center gap-2" style={{ color: "var(--warm-muted)" }}>
               Target %
-              <select value={targetPct} onChange={(e) => setTargetPct(Number(e.target.value))} className="ctrl-select-sm ml-2">
-                {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v}>{v}%</option>)}
-              </select>
+              <CustomSelect size="sm" value={String(targetPct)} onChange={(v) => setTargetPct(Number(v))} options={
+                [1,2,3,4,5,6,7,8,9,10].map((v) => ({ value: String(v), label: `${v}%` }))
+              } />
             </label>
-            <label className="text-xs font-medium" style={{ color: "var(--warm-muted)" }}>
+            <label className="text-xs font-medium flex items-center gap-2" style={{ color: "var(--warm-muted)" }}>
               Stop Loss %
-              <select value={stopLossPct} onChange={(e) => setStopLossPct(Number(e.target.value))} className="ctrl-select-sm ml-2">
-                {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v}>{v}%</option>)}
-              </select>
+              <CustomSelect size="sm" value={String(stopLossPct)} onChange={(v) => setStopLossPct(Number(v))} options={
+                [1,2,3,4,5,6,7,8,9,10].map((v) => ({ value: String(v), label: `${v}%` }))
+              } />
             </label>
             {dateRangeKey === "custom" && (
               <>
