@@ -20,6 +20,7 @@ interface BacktestEntry {
   retestTime: string;
   retestPrice: number;
   exitType: "TARGET" | "STOPLOSS";
+  exitDate: string;
   exitPrice: number;
   exitTime: string;
   pnl: number;
@@ -36,6 +37,7 @@ export interface BacktestTrade {
   entryTime: string;
   entryPrice: number;
   exitType: "TARGET" | "STOPLOSS";
+  exitDate: string;
   exitPrice: number;
   exitTime: string;
   pnl: number;
@@ -278,6 +280,7 @@ export const backtestStock = createServerFn({ method: "POST" })
               retestTime: displayTime,
               retestPrice: entryPrice,
               exitType,
+              exitDate,
               exitPrice: Math.round(exitPrice * 100) / 100,
               exitTime,
               pnl: Math.round(pnl * 100) / 100,
@@ -347,6 +350,7 @@ export const aggregateBacktest = createServerFn({ method: "POST" })
         entryTime: e.retestTime,
         entryPrice: e.retestPrice,
         exitType: e.exitType,
+        exitDate: e.exitDate,
         exitPrice: e.exitPrice,
         exitTime: e.exitTime,
         pnl: e.pnl,
