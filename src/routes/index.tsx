@@ -108,19 +108,49 @@ function CustomSelect({ value, onChange, options, disabled, className = "", size
   size?: "sm" | "md";
 }) {
   const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const selected = options.find((o) => o.value === value);
+
+  // Position the menu using fixed positioning (escapes overflow containers)
+  const positionMenu = useCallback(() => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const menuHeight = Math.min(options.length * 32 + 8, 260);
+    const openAbove = spaceBelow < menuHeight && rect.top > menuHeight;
+    setMenuStyle({
+      position: "fixed",
+      left: rect.left,
+      width: Math.max(rect.width, 120),
+      ...(openAbove
+        ? { bottom: window.innerHeight - rect.top + 4 }
+        : { top: rect.bottom + 4 }),
+      zIndex: 9999,
+    });
+  }, [options.length]);
 
   useEffect(() => {
     if (!open) return;
+    positionMenu();
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node) &&
+          menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
     };
+    const onScroll = () => setOpen(false);
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [open, positionMenu]);
 
-  // Keyboard support
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); }
     if (e.key === "Escape") setOpen(false);
@@ -133,7 +163,7 @@ function CustomSelect({ value, onChange, options, disabled, className = "", size
       <button
         type="button"
         className="csel-trigger"
-        onClick={() => !disabled && setOpen(!open)}
+        onClick={() => { if (!disabled) { positionMenu(); setOpen(!open); } }}
         onKeyDown={onKeyDown}
         tabIndex={0}
         aria-haspopup="listbox"
@@ -143,7 +173,7 @@ function CustomSelect({ value, onChange, options, disabled, className = "", size
         <svg className={`csel-chevron ${open ? "csel-chevron-open" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
       {open && (
-        <div className="csel-menu" role="listbox">
+        <div ref={menuRef} className={`csel-menu ${sizeClass}`} role="listbox" style={menuStyle}>
           {options.map((opt) => (
             <div
               key={opt.value}
