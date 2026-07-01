@@ -158,7 +158,7 @@ function Index() {
         const item = queue.shift();
         if (!item) break;
         try {
-          const r = (await scan({ data: { symbol: item.symbol, name: item.name, timeframe: tf as "5m" | "15m" | "30m" | "60m" | "1d" } })) as ScanRow;
+          const r = (await scan({ data: { symbol: item.symbol, name: item.name, timeframe: tf as "5m" | "10m" | "15m" | "30m" | "60m" | "2h" | "4h" | "1d" } })) as ScanRow;
           if (r.original || (r.retests && r.retests.length > 0)) collected.push(r);
         } catch { /* ignore */ }
         finally {
@@ -344,9 +344,12 @@ function Index() {
           <label className="text-xs font-semibold" style={{ color: "var(--warm-muted)" }}>Timeframe</label>
           <select className="ctrl-select" value={tf} onChange={(e) => setTf(e.target.value as Tf)} disabled={running}>
             <option value="5m">5 min</option>
+            <option value="10m">10 min</option>
             <option value="15m">15 min</option>
             <option value="30m">30 min</option>
             <option value="60m">1 hour</option>
+            <option value="2h">2 hours</option>
+            <option value="4h">4 hours</option>
             <option value="1d">1 day</option>
           </select>
           <label className="text-xs font-semibold" style={{ color: "var(--warm-muted)" }}>Show</label>
@@ -537,7 +540,7 @@ function SignalTable({ title, subtitle, rows, onAddTrade, activeSymbols }: {
               </th>
               <th>
                 <select className="ctrl-select w-full" style={{ ...fStyle, minWidth: 50 }} value={f.tf} onChange={(e) => set("tf", e.target.value)}>
-                  <option value="">All</option><option value="1m">1m</option><option value="5m">5m</option><option value="15m">15m</option><option value="30m">30m</option><option value="60m">60m</option><option value="1d">1d</option>
+                  <option value="">All</option><option value="1m">1m</option><option value="5m">5m</option><option value="10m">10m</option><option value="15m">15m</option><option value="30m">30m</option><option value="60m">60m</option><option value="2h">2h</option><option value="4h">4h</option><option value="1d">1d</option>
                 </select>
               </th>
               <th>
@@ -908,7 +911,7 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
   const [dateRangeKey, setDateRangeKey] = useState("1y");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const [btTimeframe, setBtTimeframe] = useState<"5m" | "15m" | "30m" | "60m" | "1d">("1d");
+  const [btTimeframe, setBtTimeframe] = useState<"5m" | "10m" | "15m" | "30m" | "60m" | "2h" | "4h" | "1d">("1d");
   const [targetPct, setTargetPct] = useState<number>(2);
   const [stopLossPct, setStopLossPct] = useState<number>(2);
   const [result, setResult] = useState<BacktestResult | null>(null);
@@ -1074,9 +1077,12 @@ function BacktestPanel({ rows }: { rows: ScanRow[] }) {
               Timeframe
               <select value={btTimeframe} onChange={(e) => setBtTimeframe(e.target.value as any)} className="ml-2 rounded-md px-2 py-1 text-xs" style={{ border: "1px solid var(--warm-border)" }}>
                 <option value="5m">5 Min</option>
+                <option value="10m">10 Min</option>
                 <option value="15m">15 Min</option>
                 <option value="30m">30 Min</option>
                 <option value="60m">1 Hour</option>
+                <option value="2h">2 Hours</option>
+                <option value="4h">4 Hours</option>
                 <option value="1d">1 Day</option>
               </select>
             </label>

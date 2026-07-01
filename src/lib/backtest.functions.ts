@@ -141,19 +141,60 @@ function checkExitOnBar(
 // Retest resolution: use finer bars for accurate entry/exit timing
 const RETEST_TF: Record<string, string> = {
   "5m": "5m",
+  "10m": "5m",
   "15m": "5m",
   "30m": "5m",
   "60m": "15m",
+  "2h": "30m",
+  "4h": "60m",
   "1d": "60m",
 };
 const RETEST_MAX_DAYS: Record<string, number> = {
   "5m": 55,
   "15m": 55,
+  "30m": 55,
   "60m": 700,
 };
 
+// Signal TF → Yahoo native interval + aggregation factor
+const BT_TF_CONFIG: Record<string, { yahooInterval: string; maxDays: number; barsPerDay: number; aggregate: number }> = {
+  "5m":  { yahooInterval: "5m",  maxDays: 55,       barsPerDay: 75,  aggregate: 1 },
+  "10m": { yahooInterval: "5m",  maxDays: 55,       barsPerDay: 37,  aggregate: 2 },
+  "15m": { yahooInterval: "15m", maxDays: 55,       barsPerDay: 26,  aggregate: 1 },
+  "30m": { yahooInterval: "30m", maxDays: 55,       barsPerDay: 13,  aggregate: 1 },
+  "60m": { yahooInterval: "60m", maxDays: 700,      barsPerDay: 7,   aggregate: 1 },
+  "2h":  { yahooInterval: "60m", maxDays: 700,      barsPerDay: 3,   aggregate: 2 },
+  "4h":  { yahooInterval: "60m", maxDays: 700,      barsPerDay: 2,   aggregate: 4 },
+  "1d":  { yahooInterval: "1d",  maxDays: 5 * 365,  barsPerDay: 1,   aggregate: 1 },
+};
+
+// Aggregate N consecutive bars into one OHLCV bar
+function aggregateBarsBacktest(bars: Bar[], n: number): Bar[] {
+  if (n <= 1) return bars;
+  const result: Bar[] = [];
+  for (let i = 0; i <= bars.length - n; i += n) {
+    let high = bars[i].high;
+    let low = bars[i].low;
+    let vol = 0;
+    for (let j = 0; j < n; j++) {
+      high = Math.max(high, bars[i + j].high);
+      low = Math.min(low, bars[i + j].low);
+      vol += bars[i + j].volume;
+    }
+    result.push({
+      open: bars[i].open,
+      high,
+      low,
+      close: bars[i + n - 1].close,
+      volume: vol,
+      time: bars[i].time,
+    });
+  }
+  return result;
+}
+
 export const backtestStock = createServerFn({ method: "POST" })
-  .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "5m" | "15m" | "30m" | "60m" | "1d"; targetPct?: number; stopLossPct?: number }) => input)
+  .validator((input: { symbol: string; name: string; dateRange: DateRange; timeframe: "5m" | "10m" | "15m" | "30m" | "60m" | "2h" | "4h" | "1d"; targetPct?: number; stopLossPct?: number }) => input)
   .handler(async ({ data }): Promise<{ entries: BacktestEntry[]; error?: string }> => {
     try {
       const { period1 } = dateRangeToDays(data.dateRange);
@@ -161,14 +202,8 @@ export const backtestStock = createServerFn({ method: "POST" })
       const TARGET_PCT = (data.targetPct ?? 2) / 100;
       const SL_PCT = (data.stopLossPct ?? 2) / 100;
 
-      const tfConfig: Record<string, { maxDays: number; barsPerDay: number }> = {
-        "5m":  { maxDays: 55, barsPerDay: 75 },
-        "15m": { maxDays: 55, barsPerDay: 26 },
-        "30m": { maxDays: 55, barsPerDay: 13 },
-        "60m": { maxDays: 700, barsPerDay: 7 },
-        "1d":  { maxDays: 5 * 365, barsPerDay: 1 },
-      };
-      const { maxDays, barsPerDay } = tfConfig[tf] || tfConfig["1d"];
+      const config = BT_TF_CONFIG[tf] || BT_TF_CONFIG["1d"];
+      const { yahooInterval, maxDays, barsPerDay, aggregate } = config;
 
       const warmupBars = 350;
       const warmupDays = Math.ceil(warmupBars / barsPerDay) + 30;
@@ -180,15 +215,18 @@ export const backtestStock = createServerFn({ method: "POST" })
       // ── Step 1: Fetch signal TF data and run Lorentzian ──
       const result = await yf.chart(data.symbol, {
         period1: fetchStart,
-        interval: tf as "1d" | "5m" | "15m" | "30m" | "60m",
+        interval: yahooInterval as any,
       }, { validateResult: false }) as any;
 
-      const bars: Bar[] = [];
+      let bars: Bar[] = [];
       for (const q of result.quotes) {
         if (q.open == null || q.high == null || q.low == null || q.close == null) continue;
         const time = q.date instanceof Date ? q.date.getTime() : new Date(q.date as string).getTime();
         bars.push({ open: q.open, high: q.high, low: q.low, close: q.close, volume: q.volume ?? 0, time });
       }
+
+      // Aggregate if needed (10m, 2h, 4h)
+      bars = aggregateBarsBacktest(bars, aggregate);
 
       if (bars.length < 100) return { entries: [], error: "Not enough data" };
 

@@ -3,7 +3,7 @@ import { runLorentzian, type LorentzianBarSignal } from "./lorentzian";
 import type { Bar } from "./indicators";
 import YahooFinance from "yahoo-finance2";
 
-export type Timeframe = "5m" | "15m" | "30m" | "60m" | "1d";
+export type Timeframe = "5m" | "10m" | "15m" | "30m" | "60m" | "2h" | "4h" | "1d";
 
 interface ScanInput {
   symbol: string;
@@ -31,19 +31,41 @@ interface ScanResult {
   error?: string;
 }
 
-function tfToYahoo(tf: Timeframe): { interval: string; rangeDays: number } {
-  switch (tf) {
-    case "5m":
-      return { interval: "5m", rangeDays: 55 };
-    case "15m":
-      return { interval: "15m", rangeDays: 55 };
-    case "30m":
-      return { interval: "30m", rangeDays: 55 };
-    case "60m":
-      return { interval: "60m", rangeDays: 700 };
-    case "1d":
-      return { interval: "1d", rangeDays: 5 * 365 };
+// Mapping: our TF → Yahoo native interval + aggregation factor
+const TF_CONFIG: Record<Timeframe, { yahooInterval: string; rangeDays: number; aggregate: number }> = {
+  "5m":  { yahooInterval: "5m",  rangeDays: 55,       aggregate: 1 },
+  "10m": { yahooInterval: "5m",  rangeDays: 55,       aggregate: 2 },  // 2×5m
+  "15m": { yahooInterval: "15m", rangeDays: 55,       aggregate: 1 },
+  "30m": { yahooInterval: "30m", rangeDays: 55,       aggregate: 1 },
+  "60m": { yahooInterval: "60m", rangeDays: 700,      aggregate: 1 },
+  "2h":  { yahooInterval: "60m", rangeDays: 700,      aggregate: 2 },  // 2×60m
+  "4h":  { yahooInterval: "60m", rangeDays: 700,      aggregate: 4 },  // 4×60m
+  "1d":  { yahooInterval: "1d",  rangeDays: 5 * 365,  aggregate: 1 },
+};
+
+// Aggregate N consecutive bars into one OHLCV bar
+function aggregateBars(bars: Bar[], n: number): Bar[] {
+  if (n <= 1) return bars;
+  const result: Bar[] = [];
+  for (let i = 0; i <= bars.length - n; i += n) {
+    let high = bars[i].high;
+    let low = bars[i].low;
+    let vol = 0;
+    for (let j = 0; j < n; j++) {
+      high = Math.max(high, bars[i + j].high);
+      low = Math.min(low, bars[i + j].low);
+      vol += bars[i + j].volume;
+    }
+    result.push({
+      open: bars[i].open,
+      high,
+      low,
+      close: bars[i + n - 1].close,
+      volume: vol,
+      time: bars[i].time,
+    });
   }
+  return result;
 }
 
 // Singleton yahoo-finance2 instance (handles cookie/crumb auth internally).
@@ -51,14 +73,13 @@ function tfToYahoo(tf: Timeframe): { interval: string; rangeDays: number } {
 const yf = new YahooFinance({ validation: { logErrors: false } });
 
 async function fetchYahoo(symbol: string, tf: Timeframe): Promise<Bar[]> {
-  const { interval, rangeDays } = tfToYahoo(tf);
+  const { yahooInterval, rangeDays, aggregate } = TF_CONFIG[tf];
   const period1 = new Date(Date.now() - rangeDays * 86400_000);
 
   const result = await yf.chart(symbol, {
     period1,
-    interval: interval as "1d" | "5m" | "15m" | "30m" | "60m",
+    interval: yahooInterval as any,
   }, { validateResult: false });
-
 
   const bars: Bar[] = [];
   for (const q of result.quotes) {
@@ -71,7 +92,8 @@ async function fetchYahoo(symbol: string, tf: Timeframe): Promise<Bar[]> {
     const time = q.date instanceof Date ? q.date.getTime() : new Date(q.date as string).getTime();
     bars.push({ open: o, high: h, low: l, close: c, volume: v ?? 0, time });
   }
-  return bars;
+
+  return aggregateBars(bars, aggregate);
 }
 
 function formatIST(epochMs: number): { date: string; time: string } {
