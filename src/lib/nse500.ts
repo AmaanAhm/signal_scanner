@@ -617,6 +617,5 @@ export const TOP_CRYPTO: NseStock[] = [
 
 export const FULL_UNIVERSE: NseStock[] = [
   ...INDIA_INDICES,
-  ...TOP_CRYPTO,
   ...NSE_500_UNIQUE,
 ];

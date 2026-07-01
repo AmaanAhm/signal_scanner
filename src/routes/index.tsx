@@ -358,7 +358,7 @@ function Index() {
             <option value="BUY">BUY only</option>
             <option value="SELL">SELL only</option>
           </select>
-          <input className="ctrl-input w-52" placeholder="Search stock, index or crypto…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className="ctrl-input w-52" placeholder="Search stock or index…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <label className="live-toggle ml-auto flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: "var(--warm-muted)" }}>
             <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-[oklch(0.48_0.10_160)]" />
             {autoRefresh && <span className="live-dot" />}
