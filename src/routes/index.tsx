@@ -900,8 +900,9 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
               <th className="text-left">#</th>
               <th className="text-left">Symbol</th>
               <th className="text-left">Side</th>
-              <th className="text-right">Entry</th>
-              <th className="text-right">Current</th>
+              <th className="text-right">Entry ₹</th>
+              <th className="text-right">Current ₹</th>
+              <th className="text-right">P&L ₹</th>
               <th className="text-right">P&L %</th>
               <th className="text-right">TP %</th>
               <th className="text-right">SL %</th>
@@ -909,9 +910,9 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
               <th className="text-center">Action</th>
             </tr></thead>
             <tbody>
-              {openTrades.length === 0 && <tr><td colSpan={10} className="text-center py-8" style={{ color: "var(--warm-light)" }}>No active trades. Set TP/SL above, then add stocks from All Retests tab.</td></tr>}
+              {openTrades.length === 0 && <tr><td colSpan={11} className="text-center py-8" style={{ color: "var(--warm-light)" }}>No active trades. Set TP/SL above, then add stocks from All Retests tab.</td></tr>}
               {openTrades.map((t, i) => {
-                const { pct } = calcPnl(t);
+                const { amount, pct } = calcPnl(t);
                 return (
                   <tr key={t.tradeId}>
                     <td className="mono" style={{ color: "var(--warm-light)" }}>{i + 1}</td>
@@ -919,6 +920,7 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
                     <td><SignalBadge signal={t.side} /></td>
                     <td className="text-right mono">₹{t.entryPrice.toFixed(2)}</td>
                     <td className="text-right mono">{t.currentPrice != null ? `₹${t.currentPrice.toFixed(2)}` : "—"}</td>
+                    <td className="text-right mono"><PnlText value={amount} prefix="₹" /></td>
                     <td className="text-right mono"><PnlText value={pct} /></td>
                     <td className="text-right mono text-profit">+{t.targetPct}%</td>
                     <td className="text-right mono text-loss">−{t.stopLossPct}%</td>
