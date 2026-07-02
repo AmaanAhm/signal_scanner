@@ -76,7 +76,7 @@ async function fetchYahoo(symbol: string, tf: Timeframe): Promise<Bar[]> {
   const { yahooInterval, rangeDays, aggregate } = TF_CONFIG[tf];
   const period1 = new Date(Date.now() - rangeDays * 86400_000);
 
-  const result = await yf.chart(symbol, {
+  const result: any = await yf.chart(symbol, {
     period1,
     interval: yahooInterval as any,
   }, { validateResult: false });
@@ -236,7 +236,7 @@ export const scanStock = createServerFn({ method: "POST" })
           const signalAge = Date.now() - signalEpoch;
           // 1m bars available for ~7 days, 5m for ~60 days
           const fineInterval = signalAge < 6.5 * 86400_000 ? "1m" : "5m";
-          const fineResult = await yf.chart(data.symbol, {
+          const fineResult: any = await yf.chart(data.symbol, {
             period1: new Date(signalEpoch),
             interval: fineInterval as "1m" | "5m",
           }, { validateResult: false });
