@@ -656,7 +656,7 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
   const [loaded, setLoaded] = useState(false);
   const updatingRef = useRef(false);
 
-  // TP/SL state
+  // TP/SL state (global defaults)
   const [tpMode, setTpMode] = useState<string>("2");   // "1".."10" or "custom"
   const [slMode, setSlMode] = useState<string>("2");   // "1".."10" or "custom"
   const [tpCustom, setTpCustom] = useState<string>("");
@@ -666,6 +666,18 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
   const slPct = slMode === "custom" ? parseFloat(slCustom) : parseFloat(slMode);
   const tpValid = Number.isFinite(tpPct) && tpPct > 0;
   const slValid = Number.isFinite(slPct) && slPct > 0;
+
+  // Per-trade TP/SL dialog
+  const [pendingStock, setPendingStock] = useState<FlatRow | null>(null);
+  const [dialogTp, setDialogTp] = useState<string>("2");
+  const [dialogSl, setDialogSl] = useState<string>("2");
+  const [dialogTpCustom, setDialogTpCustom] = useState<string>("");
+  const [dialogSlCustom, setDialogSlCustom] = useState<string>("");
+
+  const dialogTpPct = dialogTp === "custom" ? parseFloat(dialogTpCustom) : parseFloat(dialogTp);
+  const dialogSlPct = dialogSl === "custom" ? parseFloat(dialogSlCustom) : parseFloat(dialogSl);
+  const dialogTpValid = Number.isFinite(dialogTpPct) && dialogTpPct > 0;
+  const dialogSlValid = Number.isFinite(dialogSlPct) && dialogSlPct > 0;
 
   const openTrades = useMemo(() => trades.filter((t) => t.status === "Open"), [trades]);
   const closedTrades = useMemo(() => trades.filter((t) => t.status === "Closed"), [trades]);
@@ -681,23 +693,34 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
       .finally(() => setLoaded(true));
   }, []);
 
-  // Add trade with TP/SL.
-  const addTrade = useCallback(async (stock: FlatRow) => {
+  // Step 1: Click "Add" → open dialog pre-filled with global TP/SL.
+  const addTrade = useCallback((stock: FlatRow) => {
     if (stock.currentPrice == null) return;
-    if (!tpValid || !slValid) return;
+    setPendingStock(stock);
+    setDialogTp(tpMode);
+    setDialogSl(slMode);
+    setDialogTpCustom(tpCustom);
+    setDialogSlCustom(slCustom);
+  }, [tpMode, slMode, tpCustom, slCustom]);
+
+  // Step 2: User confirms → create trade with per-trade TP/SL.
+  const confirmAddTrade = useCallback(async () => {
+    if (!pendingStock || pendingStock.currentPrice == null) return;
+    if (!dialogTpValid || !dialogSlValid) return;
     const now = new Date();
     const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
     const trade: PaperTrade = {
-      tradeId: `${stock.symbol}-${Date.now()}`,
-      symbol: stock.symbol, name: stock.name, side: stock.signal,
-      entryPrice: stock.currentPrice, entryDate: parts,
-      holdingDays: 5, exitPrice: null, exitDate: null, currentPrice: stock.currentPrice, status: "Open",
+      tradeId: `${pendingStock.symbol}-${Date.now()}`,
+      symbol: pendingStock.symbol, name: pendingStock.name, side: pendingStock.signal,
+      entryPrice: pendingStock.currentPrice, entryDate: parts,
+      holdingDays: 5, exitPrice: null, exitDate: null, currentPrice: pendingStock.currentPrice, status: "Open",
       dayPnl: [null, null, null, null, null],
-      targetPct: tpPct, stopLossPct: slPct, exitReason: null,
+      targetPct: dialogTpPct, stopLossPct: dialogSlPct, exitReason: null,
     };
     setTrades((prev) => [trade, ...prev]);
+    setPendingStock(null);
     try { await dbSave({ data: trade }); } catch { /* best-effort */ }
-  }, [dbSave, tpPct, slPct, tpValid, slValid]);
+  }, [pendingStock, dbSave, dialogTpPct, dialogSlPct, dialogTpValid, dialogSlValid]);
 
   // Notify parent of active symbols whenever open trades change.
   const activeSet = useMemo(() => new Set(openTrades.map((t) => t.symbol)), [openTrades]);
@@ -836,7 +859,55 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
   return (
     <div className="space-y-6">
       {/* Add trades from the All Retests tab using the "Add" button */}
-      <p className="text-xs" style={{ color: "var(--warm-light)" }}>Go to the <strong>All Retests</strong> tab and click <strong>"Add"</strong> on any stock to start a paper trade. Set your TP/SL below — trades auto-exit when either level is hit.</p>
+      <p className="text-xs" style={{ color: "var(--warm-light)" }}>Go to the <strong>All Retests</strong> tab and click <strong>"Add"</strong> on any stock — a dialog will let you set TP/SL per trade. Trades auto-exit when either level is hit.</p>
+
+      {/* ── Per-trade TP/SL Dialog ── */}
+      {pendingStock && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
+          <div className="glass-card" style={{ maxWidth: 420, width: "90%", padding: "24px 28px", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
+            <div className="mb-4">
+              <div className="text-sm font-semibold" style={{ color: "var(--warm-text)" }}>Add Paper Trade</div>
+              <div className="text-xs mt-1" style={{ color: "var(--warm-muted)" }}>
+                {pendingStock.symbol.replace(".NS", "")} · <SignalBadge signal={pendingStock.signal} /> · Entry ₹{pendingStock.currentPrice?.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="flex gap-4 mb-4">
+              <div className="flex-1">
+                <label className="text-xs font-semibold block mb-1" style={{ color: "var(--warm-muted)" }}>Take Profit %</label>
+                <select className="ctrl-select w-full" value={dialogTp} onChange={(e) => setDialogTp(e.target.value)}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => <option key={v} value={String(v)}>{v}%</option>)}
+                  <option value="custom">Custom</option>
+                </select>
+                {dialogTp === "custom" && (
+                  <input className="ctrl-input w-full mt-1" type="number" step="0.1" min="0.1" placeholder="e.g. 2.75" value={dialogTpCustom} onChange={(e) => setDialogTpCustom(e.target.value)} />
+                )}
+                {dialogTp === "custom" && !dialogTpValid && dialogTpCustom !== "" && <span className="text-xs text-loss block mt-0.5">Enter a valid positive number</span>}
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-semibold block mb-1" style={{ color: "var(--warm-muted)" }}>Stop Loss %</label>
+                <select className="ctrl-select w-full" value={dialogSl} onChange={(e) => setDialogSl(e.target.value)}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => <option key={v} value={String(v)}>{v}%</option>)}
+                  <option value="custom">Custom</option>
+                </select>
+                {dialogSl === "custom" && (
+                  <input className="ctrl-input w-full mt-1" type="number" step="0.1" min="0.1" placeholder="e.g. 1.5" value={dialogSlCustom} onChange={(e) => setDialogSlCustom(e.target.value)} />
+                )}
+                {dialogSl === "custom" && !dialogSlValid && dialogSlCustom !== "" && <span className="text-xs text-loss block mt-0.5">Enter a valid positive number</span>}
+              </div>
+            </div>
+
+            <div className="text-xs mb-4" style={{ color: "var(--warm-muted)" }}>
+              Target: <strong className="text-profit">+{dialogTpValid ? dialogTpPct : "—"}%</strong> · Stop Loss: <strong className="text-loss">−{dialogSlValid ? dialogSlPct : "—"}%</strong>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button className="btn-outline-sm" onClick={() => setPendingStock(null)}>Cancel</button>
+              <button className="btn-primary-sm" disabled={!dialogTpValid || !dialogSlValid} onClick={confirmAddTrade}>Confirm Trade</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── TP/SL Settings ── */}
       <div className="glass-card px-5 py-4 flex flex-wrap items-end gap-4">
