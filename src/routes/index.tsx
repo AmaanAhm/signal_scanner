@@ -61,6 +61,9 @@ interface PaperTrade {
   currentPrice: number | null;
   status: "Open" | "Closed";
   dayPnl: (number | null)[];
+  targetPct: number;      // Take Profit %
+  stopLossPct: number;    // Stop Loss %
+  exitReason: string | null; // "Target Hit" | "Stop Loss Hit" | "Manual" | "Day 5 Auto"
 }
 
 const CONCURRENCY = 8;
@@ -653,6 +656,17 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
   const [loaded, setLoaded] = useState(false);
   const updatingRef = useRef(false);
 
+  // TP/SL state
+  const [tpMode, setTpMode] = useState<string>("2");   // "1".."10" or "custom"
+  const [slMode, setSlMode] = useState<string>("2");   // "1".."10" or "custom"
+  const [tpCustom, setTpCustom] = useState<string>("");
+  const [slCustom, setSlCustom] = useState<string>("");
+
+  const tpPct = tpMode === "custom" ? parseFloat(tpCustom) : parseFloat(tpMode);
+  const slPct = slMode === "custom" ? parseFloat(slCustom) : parseFloat(slMode);
+  const tpValid = Number.isFinite(tpPct) && tpPct > 0;
+  const slValid = Number.isFinite(slPct) && slPct > 0;
+
   const openTrades = useMemo(() => trades.filter((t) => t.status === "Open"), [trades]);
   const closedTrades = useMemo(() => trades.filter((t) => t.status === "Closed"), [trades]);
 
@@ -667,10 +681,10 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
       .finally(() => setLoaded(true));
   }, []);
 
-  // Add trade — always 5 trading days.
+  // Add trade with TP/SL.
   const addTrade = useCallback(async (stock: FlatRow) => {
     if (stock.currentPrice == null) return;
-    // Get the signal date in IST YYYY-MM-DD format for simulatePaperTrade
+    if (!tpValid || !slValid) return;
     const now = new Date();
     const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
     const trade: PaperTrade = {
@@ -679,21 +693,22 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
       entryPrice: stock.currentPrice, entryDate: parts,
       holdingDays: 5, exitPrice: null, exitDate: null, currentPrice: stock.currentPrice, status: "Open",
       dayPnl: [null, null, null, null, null],
+      targetPct: tpPct, stopLossPct: slPct, exitReason: null,
     };
     setTrades((prev) => [trade, ...prev]);
     try { await dbSave({ data: trade }); } catch { /* best-effort */ }
-  }, [dbSave]);
+  }, [dbSave, tpPct, slPct, tpValid, slValid]);
 
   // Notify parent of active symbols whenever open trades change.
   const activeSet = useMemo(() => new Set(openTrades.map((t) => t.symbol)), [openTrades]);
   useEffect(() => { onActiveChange(activeSet); }, [activeSet, onActiveChange]);
   useImperativeHandle(ref, () => ({ addTrade }), [addTrade]);
 
-  // Close trade.
+  // Close trade manually.
   const doCloseTrade = useCallback(async (id: string) => {
     const trade = trades.find((t) => t.tradeId === id);
     if (!trade || trade.status !== "Open") return;
-    const updates = { exitPrice: trade.currentPrice, exitDate: new Date().toISOString(), status: "Closed" as const };
+    const updates = { exitPrice: trade.currentPrice, exitDate: new Date().toISOString(), status: "Closed" as const, exitReason: "Manual" };
     setTrades((prev) => prev.map((t) => t.tradeId === id ? { ...t, ...updates } : t));
     try { await dbUpdate({ data: { tradeId: id, updates } }); } catch { /* best-effort */ }
   }, [trades, dbUpdate]);
@@ -732,7 +747,7 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
         }),
       );
 
-      const dbUpdates: Array<{ tradeId: string; currentPrice: number | null; status?: "Open" | "Closed"; exitPrice?: number | null; exitDate?: string | null }> = [];
+      const dbUpdates: Array<{ tradeId: string; currentPrice: number | null; status?: "Open" | "Closed"; exitPrice?: number | null; exitDate?: string | null; exitReason?: string }> = [];
 
       setTrades((prev) => prev.map((t) => {
         if (t.status !== "Open") return t;
@@ -745,12 +760,29 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
           dayPnl[0] = t.side === "BUY" ? raw : -raw;
         }
 
+        // ── TP/SL auto-exit ──
+        if (price != null && t.targetPct > 0 && t.stopLossPct > 0) {
+          const rawPct = ((price - t.entryPrice) / t.entryPrice) * 100;
+          const pnlPct = t.side === "BUY" ? rawPct : -rawPct;
+          if (pnlPct >= t.targetPct) {
+            const exitDate = new Date().toISOString();
+            dbUpdates.push({ tradeId: t.tradeId, currentPrice: price, status: "Closed", exitPrice: price, exitDate, exitReason: "Target Hit" });
+            return { ...t, currentPrice: price, exitPrice: price, exitDate, status: "Closed" as const, dayPnl, exitReason: "Target Hit" };
+          }
+          if (pnlPct <= -t.stopLossPct) {
+            const exitDate = new Date().toISOString();
+            dbUpdates.push({ tradeId: t.tradeId, currentPrice: price, status: "Closed", exitPrice: price, exitDate, exitReason: "Stop Loss Hit" });
+            return { ...t, currentPrice: price, exitPrice: price, exitDate, status: "Closed" as const, dayPnl, exitReason: "Stop Loss Hit" };
+          }
+        }
+
         // Auto-close if day 5 P&L is available.
         const allDaysFilled = dayPnl.length >= 5 && dayPnl[4] != null;
         if (allDaysFilled) {
           const exitP = price ?? t.currentPrice;
-          const u = { ...t, currentPrice: price ?? t.currentPrice, exitPrice: exitP, exitDate: new Date().toISOString(), status: "Closed" as const, dayPnl };
-          dbUpdates.push({ tradeId: t.tradeId, currentPrice: exitP, status: "Closed", exitPrice: exitP, exitDate: u.exitDate });
+          const exitDate = new Date().toISOString();
+          const u = { ...t, currentPrice: price ?? t.currentPrice, exitPrice: exitP, exitDate, status: "Closed" as const, dayPnl, exitReason: "Day 5 Auto" };
+          dbUpdates.push({ tradeId: t.tradeId, currentPrice: exitP, status: "Closed", exitPrice: exitP, exitDate, exitReason: "Day 5 Auto" });
           return u;
         }
         if (price != null) dbUpdates.push({ tradeId: t.tradeId, currentPrice: price });
@@ -804,7 +836,56 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
   return (
     <div className="space-y-6">
       {/* Add trades from the All Retests tab using the "Add" button */}
-      <p className="text-xs" style={{ color: "var(--warm-light)" }}>Go to the <strong>All Retests</strong> tab and click <strong>"Add"</strong> on any stock to start a paper trade. Each trade tracks P&L for 5 trading days, then auto-closes. Prices update every 60s.</p>
+      <p className="text-xs" style={{ color: "var(--warm-light)" }}>Go to the <strong>All Retests</strong> tab and click <strong>"Add"</strong> on any stock to start a paper trade. Set your TP/SL below — trades auto-exit when either level is hit.</p>
+
+      {/* ── TP/SL Settings ── */}
+      <div className="glass-card px-5 py-4 flex flex-wrap items-end gap-4">
+        <div>
+          <label className="text-xs font-semibold block mb-1" style={{ color: "var(--warm-muted)" }}>Take Profit %</label>
+          <div className="flex items-center gap-2">
+            <select className="ctrl-select" value={tpMode} onChange={(e) => setTpMode(e.target.value)}>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => <option key={v} value={String(v)}>{v}%</option>)}
+              <option value="custom">Custom</option>
+            </select>
+            {tpMode === "custom" && (
+              <input
+                className="ctrl-input w-20"
+                type="number"
+                step="0.1"
+                min="0.1"
+                placeholder="e.g. 2.75"
+                value={tpCustom}
+                onChange={(e) => setTpCustom(e.target.value)}
+              />
+            )}
+          </div>
+          {tpMode === "custom" && !tpValid && tpCustom !== "" && <span className="text-xs text-loss mt-0.5 block">Enter a valid positive number</span>}
+        </div>
+        <div>
+          <label className="text-xs font-semibold block mb-1" style={{ color: "var(--warm-muted)" }}>Stop Loss %</label>
+          <div className="flex items-center gap-2">
+            <select className="ctrl-select" value={slMode} onChange={(e) => setSlMode(e.target.value)}>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => <option key={v} value={String(v)}>{v}%</option>)}
+              <option value="custom">Custom</option>
+            </select>
+            {slMode === "custom" && (
+              <input
+                className="ctrl-input w-20"
+                type="number"
+                step="0.1"
+                min="0.1"
+                placeholder="e.g. 1.5"
+                value={slCustom}
+                onChange={(e) => setSlCustom(e.target.value)}
+              />
+            )}
+          </div>
+          {slMode === "custom" && !slValid && slCustom !== "" && <span className="text-xs text-loss mt-0.5 block">Enter a valid positive number</span>}
+        </div>
+        <div className="text-xs" style={{ color: "var(--warm-muted)" }}>
+          Active: <strong className="text-profit">TP +{tpValid ? tpPct : "—"}%</strong> · <strong className="text-loss">SL −{slValid ? slPct : "—"}%</strong>
+        </div>
+      </div>
 
       {/* ── Active Trades ── */}
       <div>
@@ -820,25 +901,32 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
               <th className="text-left">Symbol</th>
               <th className="text-left">Side</th>
               <th className="text-right">Entry</th>
-              {[1, 2, 3, 4, 5].map((d) => <th key={d} className="text-right">Day {d} %</th>)}
+              <th className="text-right">Current</th>
+              <th className="text-right">P&L %</th>
+              <th className="text-right">TP %</th>
+              <th className="text-right">SL %</th>
               <th className="text-left">Status</th>
               <th className="text-center">Action</th>
             </tr></thead>
             <tbody>
-              {openTrades.length === 0 && <tr><td colSpan={10} className="text-center py-8" style={{ color: "var(--warm-light)" }}>No active trades. Add stocks from the list above.</td></tr>}
-              {openTrades.map((t, i) => (
-                <tr key={t.tradeId}>
-                  <td className="mono" style={{ color: "var(--warm-light)" }}>{i + 1}</td>
-                  <td className="mono font-medium" style={{ color: "var(--warm-text)" }}>{t.symbol.replace(".NS", "")}</td>
-                  <td><SignalBadge signal={t.side} /></td>
-                  <td className="text-right mono">₹{t.entryPrice.toFixed(2)}</td>
-                  {(t.dayPnl || [null, null, null, null, null]).map((p, idx) => (
-                    <td key={idx} className="text-right mono"><PnlText value={p} /></td>
-                  ))}
-                  <td><span className="badge-open">Open</span></td>
-                  <td className="text-center"><button onClick={() => doCloseTrade(t.tradeId)} className="btn-danger-sm">Close</button></td>
-                </tr>
-              ))}
+              {openTrades.length === 0 && <tr><td colSpan={10} className="text-center py-8" style={{ color: "var(--warm-light)" }}>No active trades. Set TP/SL above, then add stocks from All Retests tab.</td></tr>}
+              {openTrades.map((t, i) => {
+                const { pct } = calcPnl(t);
+                return (
+                  <tr key={t.tradeId}>
+                    <td className="mono" style={{ color: "var(--warm-light)" }}>{i + 1}</td>
+                    <td className="mono font-medium" style={{ color: "var(--warm-text)" }}>{t.symbol.replace(".NS", "")}</td>
+                    <td><SignalBadge signal={t.side} /></td>
+                    <td className="text-right mono">₹{t.entryPrice.toFixed(2)}</td>
+                    <td className="text-right mono">{t.currentPrice != null ? `₹${t.currentPrice.toFixed(2)}` : "—"}</td>
+                    <td className="text-right mono"><PnlText value={pct} /></td>
+                    <td className="text-right mono text-profit">+{t.targetPct}%</td>
+                    <td className="text-right mono text-loss">−{t.stopLossPct}%</td>
+                    <td><span className="badge-open">Open</span></td>
+                    <td className="text-center"><button onClick={() => doCloseTrade(t.tradeId)} className="btn-danger-sm">Close</button></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -856,44 +944,45 @@ const PaperTradePanel = forwardRef<PaperTradeRef, { onActiveChange: (s: Set<stri
               <th className="text-left">#</th>
               <th className="text-left">Symbol</th>
               <th className="text-left">Side</th>
-              <th className="text-right">Entry</th>
-              {[1, 2, 3, 4, 5].map((d) => <th key={d} className="text-right">Day {d} %</th>)}
-              <th className="text-left">Status</th>
+              <th className="text-right">Entry ₹</th>
+              <th className="text-right">Exit ₹</th>
+              <th className="text-right">P&L ₹</th>
+              <th className="text-right">P&L %</th>
+              <th className="text-left">Exit Reason</th>
+              <th className="text-left">Exit Time</th>
               <th className="text-center">Action</th>
             </tr></thead>
             <tbody>
               {closedTrades.length === 0 && <tr><td colSpan={10} className="text-center py-8" style={{ color: "var(--warm-light)" }}>No closed trades yet.</td></tr>}
-              {closedTrades.map((t, i) => (
-                <tr key={t.tradeId}>
-                  <td className="mono" style={{ color: "var(--warm-light)" }}>{i + 1}</td>
-                  <td className="mono font-medium" style={{ color: "var(--warm-text)" }}>{t.symbol.replace(".NS", "")}</td>
-                  <td><SignalBadge signal={t.side} /></td>
-                  <td className="text-right mono">₹{t.entryPrice.toFixed(2)}</td>
-                  {(t.dayPnl || [null, null, null, null, null]).map((p, idx) => (
-                    <td key={idx} className="text-right mono"><PnlText value={p} /></td>
-                  ))}
-                  <td><span className="badge-closed">Closed</span></td>
-                  <td className="text-center"><button onClick={() => doRemoveTrade(t.tradeId)} className="btn-outline-sm">Remove</button></td>
-                </tr>
-              ))}
-              {(openTrades.length + closedTrades.length) > 0 && (
-                <tr style={{ background: "oklch(0.97 0.004 250)" }}>
-                  <td colSpan={4} className="font-semibold" style={{ color: "var(--warm-text)" }}>Totals ({dayTotals[0]?.n || 0} trades) — avg · cumulative</td>
-                  {dayTotals.map((dt, i) => (
-                    <td key={i} className={`text-right mono ${dt.avg == null ? '' : dt.avg >= 0 ? 'text-profit' : 'text-loss'}`}>
-                      {dt.avg == null ? "—" : `${dt.avg >= 0 ? "+" : ""}${dt.avg.toFixed(2)}% · ${dt.total >= 0 ? "+" : ""}${dt.total.toFixed(2)}%`}
+              {closedTrades.map((t, i) => {
+                const { amount, pct } = calcPnl(t);
+                const exitTime = t.exitDate ? new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "short", timeStyle: "short" }).format(new Date(t.exitDate)) : "—";
+                return (
+                  <tr key={t.tradeId}>
+                    <td className="mono" style={{ color: "var(--warm-light)" }}>{i + 1}</td>
+                    <td className="mono font-medium" style={{ color: "var(--warm-text)" }}>{t.symbol.replace(".NS", "")}</td>
+                    <td><SignalBadge signal={t.side} /></td>
+                    <td className="text-right mono">₹{t.entryPrice.toFixed(2)}</td>
+                    <td className="text-right mono">{t.exitPrice != null ? `₹${t.exitPrice.toFixed(2)}` : "—"}</td>
+                    <td className="text-right mono"><PnlText value={amount} prefix="₹" /></td>
+                    <td className="text-right mono"><PnlText value={pct} /></td>
+                    <td>
+                      <span className={t.exitReason === "Target Hit" ? "badge-buy" : t.exitReason === "Stop Loss Hit" ? "badge-sell" : "badge-closed"}>
+                        {t.exitReason || "Closed"}
+                      </span>
                     </td>
-                  ))}
-                  <td colSpan={2} />
-                </tr>
-              )}
+                    <td className="text-xs mono" style={{ color: "var(--warm-muted)" }}>{exitTime}</td>
+                    <td className="text-center"><button onClick={() => doRemoveTrade(t.tradeId)} className="btn-outline-sm">Remove</button></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
       <p className="text-xs" style={{ color: "var(--warm-light)" }}>
-        Paper trades are persisted in MongoDB. P&L % is side-adjusted (BUY: up=profit, SELL: down=profit). Trades auto-close after 5 trading days.
+        Paper trades are persisted in MongoDB. Trades auto-exit when TP or SL is hit. P&L is side-adjusted (BUY: up=profit, SELL: down=profit).
       </p>
     </div>
   );

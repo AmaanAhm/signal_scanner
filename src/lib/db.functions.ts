@@ -62,6 +62,9 @@ function toDb(t: any) {
     current_price: t.currentPrice ?? null,
     status: t.status ?? "Open",
     day_pnl: t.dayPnl ?? [null, null, null, null, null],
+    target_pct: t.targetPct ?? 2,
+    stop_loss_pct: t.stopLossPct ?? 2,
+    exit_reason: t.exitReason ?? null,
     created_at: new Date().toISOString(),
   };
 }
@@ -81,6 +84,9 @@ function fromDb(row: any) {
     currentPrice: row.current_price,
     status: row.status,
     dayPnl: row.day_pnl ?? [null, null, null, null, null],
+    targetPct: row.target_pct ?? 2,
+    stopLossPct: row.stop_loss_pct ?? 2,
+    exitReason: row.exit_reason ?? null,
   };
 }
 
@@ -100,6 +106,7 @@ export const updatePaperTrade = createServerFn({ method: "POST" })
     if (data.updates.status !== undefined) updates.status = data.updates.status;
     if (data.updates.currentPrice !== undefined) updates.current_price = data.updates.currentPrice;
     if (data.updates.dayPnl !== undefined) updates.day_pnl = data.updates.dayPnl;
+    if (data.updates.exitReason !== undefined) updates.exit_reason = data.updates.exitReason;
     await dbUpdate("paper_trades", `trade_id=eq.${data.tradeId}`, updates);
     return { ok: true };
   });
@@ -126,7 +133,7 @@ export const clearPaperTradeHistory = createServerFn({ method: "POST" })
   });
 
 export const batchUpdatePaperTrades = createServerFn({ method: "POST" })
-  .validator((input: { updates: Array<{ tradeId: string; currentPrice: number | null; status?: "Open" | "Closed"; exitPrice?: number | null; exitDate?: string | null }> }) => input)
+  .validator((input: { updates: Array<{ tradeId: string; currentPrice: number | null; status?: "Open" | "Closed"; exitPrice?: number | null; exitDate?: string | null; exitReason?: string }> }) => input)
   .handler(async ({ data }) => {
     await Promise.all(
       data.updates.map((u) => {
@@ -134,6 +141,7 @@ export const batchUpdatePaperTrades = createServerFn({ method: "POST" })
         if (u.status) updates.status = u.status;
         if (u.exitPrice !== undefined) updates.exit_price = u.exitPrice;
         if (u.exitDate !== undefined) updates.exit_date = u.exitDate;
+        if (u.exitReason !== undefined) updates.exit_reason = u.exitReason;
         return dbUpdate("paper_trades", `trade_id=eq.${u.tradeId}`, updates);
       }),
     );
